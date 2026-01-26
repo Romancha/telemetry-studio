@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GoPro Overlay - Visual Editor</title>
+    <link rel="stylesheet" href="/static/editor/css/editor.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Header -->
+        <header class="editor-header">
+            <div class="header-left">
+                <a href="/" class="back-link">&larr; Back</a>
+                <h1>Visual Layout Editor</h1>
+            </div>
+            <div class="header-center">
+                <input type="text" id="layout-name" class="layout-name-input" value="Untitled Layout" placeholder="Layout name">
+            </div>
+            <div class="header-right">
+                <button id="btn-new" class="btn btn-secondary" title="New Layout">New</button>
+                <button id="btn-load" class="btn btn-secondary" title="Load Layout">Load</button>
+                <button id="btn-save" class="btn btn-secondary" title="Save to Browser">Save</button>
+                <button id="btn-export" class="btn btn-primary" title="Export XML">Export XML</button>
+                <button id="btn-preview" class="btn btn-accent" title="Generate Preview">Preview</button>
+            </div>
+        </header>
+
+        <div class="editor-main">
+            <!-- Left Panel: Widget Palette -->
+            <aside class="panel panel-left">
+                <div class="panel-header">
+                    <h2>Widgets</h2>
+                    <input type="text" id="widget-search" class="search-input" placeholder="Search widgets...">
+                </div>
+                <div id="widget-palette" class="widget-palette">
+                    <!-- Widget categories will be populated by JS -->
+                </div>
+            </aside>
+
+            <!-- Center: Canvas -->
+            <main class="canvas-area">
+                <div class="canvas-toolbar">
+                    <div class="toolbar-group">
+                        <button id="btn-undo" class="btn btn-icon" title="Undo (Ctrl+Z)" disabled>&larr;</button>
+                        <button id="btn-redo" class="btn btn-icon" title="Redo (Ctrl+Y)" disabled>&rarr;</button>
+                    </div>
+                    <div class="toolbar-group">
+                        <button id="btn-zoom-out" class="btn btn-icon" title="Zoom Out">-</button>
+                        <span id="zoom-level" class="zoom-level">100%</span>
+                        <button id="btn-zoom-in" class="btn btn-icon" title="Zoom In">+</button>
+                        <button id="btn-zoom-fit" class="btn btn-icon" title="Fit to View">Fit</button>
+                    </div>
+                    <div class="toolbar-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="toggle-grid" checked>
+                            Grid
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="toggle-snap">
+                            Snap
+                        </label>
+                    </div>
+                    <div class="toolbar-group">
+                        <label>Canvas:</label>
+                        <input type="number" id="canvas-width" class="size-input" value="1920" min="100" max="7680">
+                        <span>x</span>
+                        <input type="number" id="canvas-height" class="size-input" value="1080" min="100" max="4320">
+                    </div>
+                </div>
+                <div id="canvas-viewport" class="canvas-viewport">
+                    <div id="canvas" class="canvas">
+                        <!-- Widgets rendered here -->
+                    </div>
+                </div>
+            </main>
+
+            <!-- Right Panel: Properties + Layers -->
+            <aside class="panel panel-right">
+                <div class="panel-tabs">
+                    <button class="panel-tab active" data-tab="properties">Properties</button>
+                    <button class="panel-tab" data-tab="layers">Layers</button>
+                </div>
+
+                <div id="properties-tab" class="tab-content active">
+                    <div id="properties-panel" class="properties-panel">
+                        <p class="no-selection">Select a widget to edit its properties</p>
+                    </div>
+                </div>
+
+                <div id="layers-tab" class="tab-content" style="display: none;">
+                    <div id="layers-panel" class="layers-panel">
+                        <!-- Layer hierarchy will be populated by JS -->
+                    </div>
+                </div>
+            </aside>
+        </div>
+
+        <!-- Status Bar -->
+        <footer class="status-bar">
+            <span id="status-message">Ready</span>
+            <span id="status-position"></span>
+            <span id="status-size"></span>
+        </footer>
+    </div>
+
+    <!-- Load XML Modal -->
+    <div id="load-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Load Layout</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="load-options">
+                    <div class="load-option">
+                        <h4>From File</h4>
+                        <input type="file" id="load-file-input" accept=".xml" style="display: none;">
+                        <button id="btn-load-file" class="btn btn-secondary">Choose XML File...</button>
+                    </div>
+                    <div class="load-option">
+                        <h4>From Predefined Layouts</h4>
+                        <select id="predefined-layouts" class="select-input">
+                            <option value="">Select a layout...</option>
+                        </select>
+                        <button id="btn-load-predefined" class="btn btn-secondary">Load</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Preview Modal -->
+    <div id="preview-modal" class="modal" style="display: none;">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h3>Preview</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="preview-loading" class="loading">
+                    <div class="spinner"></div>
+                    <p>Generating preview...</p>
+                </div>
+                <img id="preview-image" class="preview-image" style="display: none;" alt="Preview">
+                <p id="preview-error" class="error-message" style="display: none;"></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/static/editor/js/state/EditorState.js"></script>
+    <script src="/static/editor/js/state/HistoryManager.js"></script>
+    <script src="/static/editor/js/api/client.js"></script>
+    <script src="/static/editor/js/components/WidgetPalette.js"></script>
+    <script src="/static/editor/js/components/Canvas.js"></script>
+    <script src="/static/editor/js/components/PropertiesPanel.js"></script>
+    <script src="/static/editor/js/components/LayersPanel.js"></script>
+    <script src="/static/editor/js/utils/storage.js"></script>
+    <script src="/static/editor/js/main.js"></script>
+</body>
+</html>

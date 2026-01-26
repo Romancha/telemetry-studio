@@ -1,0 +1,360 @@
+"""Upload API endpoint."""
+
+import logging
+from pathlib import Path
+from typing import Annotated
+
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+
+from telemetry_studio.config import settings
+from telemetry_studio.models.schemas import (
+    ConfigResponse,
+    FileRole,
+    LocalFileRequest,
+    SecondaryFileRequest,
+    UploadResponse,
+)
+from telemetry_studio.services.file_manager import file_manager
+from telemetry_studio.services.metadata import (
+    extract_gpx_fit_metadata,
+    extract_video_metadata,
+    get_file_type,
+)
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter()
+
+
+@router.get("/config", response_model=ConfigResponse)
+async def get_config() -> ConfigResponse:
+    """Get application configuration."""
+    return ConfigResponse(
+        local_mode=settings.local_mode,
+        max_upload_size_bytes=settings.max_upload_size_bytes,
+        allowed_extensions=list(settings.allowed_extensions),
+    )
+
+
+@router.post("/local-file", response_model=UploadResponse)
+async def use_local_file(request: LocalFileRequest) -> UploadResponse:
+    """Use a local file path instead of uploading.
+
+    Only available when TELEMETRY_STUDIO_LOCAL_MODE=true.
+    """
+    if not settings.local_mode:
+        raise HTTPException(
+            status_code=403,
+            detail="Local file mode is disabled. Set TELEMETRY_STUDIO_LOCAL_MODE=true to enable.",
+        )
+
+    file_path = Path(request.file_path).expanduser().resolve()
+
+    # Validate file exists
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+
+    if not file_path.is_file():
+        raise HTTPException(status_code=400, detail=f"Not a file: {file_path}")
+
+    # Validate extension
+    extension = file_path.suffix.lower()
+    if extension not in settings.allowed_extensions:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File type not allowed. Allowed: {', '.join(settings.allowed_extensions)}",
+        )
+
+    # Create local session
+    session_id = file_manager.create_local_session()
+
+    # Determine file type and extract metadata
+    file_type = get_file_type(file_path)
+    video_metadata = None
+    gpx_fit_metadata = None
+
+    if file_type == "video":
+        try:
+            video_metadata = extract_video_metadata(file_path)
+        except Exception as e:
+            logger.error(f"Failed to extract video metadata: {e}")
+            file_manager.cleanup_session(session_id)
+            raise HTTPException(
+                status_code=400,
+                detail="Could not read video file. Ensure it's a valid video format.",
+            ) from e
+    elif file_type in ("gpx", "fit"):
+        try:
+            gpx_fit_metadata = extract_gpx_fit_metadata(file_path)
+        except Exception as e:
+            logger.error(f"Failed to extract GPX/FIT metadata: {e}")
+            file_manager.cleanup_session(session_id)
+            raise HTTPException(
+                status_code=400,
+                detail=f"Could not read {file_type.upper()} file. Ensure it's a valid format.",
+            ) from e
+
+    # Add file to session as primary
+    file_info = file_manager.add_file(
+        session_id=session_id,
+        filename=file_path.name,
+        file_path=file_path,
+        file_type=file_type,
+        role=FileRole.PRIMARY,
+        video_metadata=video_metadata,
+        gpx_fit_metadata=gpx_fit_metadata,
+    )
+
+    return UploadResponse(
+        session_id=session_id,
+        files=[file_info],
+    )
+
+
+@router.post("/local-file-secondary", response_model=UploadResponse)
+async def use_local_secondary_file(request: SecondaryFileRequest) -> UploadResponse:
+    """Add a secondary GPX/FIT file from local path.
+
+    Only available when TELEMETRY_STUDIO_LOCAL_MODE=true.
+    """
+    if not settings.local_mode:
+        raise HTTPException(
+            status_code=403,
+            detail="Local file mode is disabled. Set TELEMETRY_STUDIO_LOCAL_MODE=true to enable.",
+        )
+
+    # Validate session exists
+    if not file_manager.session_exists(request.session_id):
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    file_path = Path(request.file_path).expanduser().resolve()
+
+    # Validate file exists
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+
+    if not file_path.is_file():
+        raise HTTPException(status_code=400, detail=f"Not a file: {file_path}")
+
+    # Validate extension - only GPX/FIT allowed for secondary
+    extension = file_path.suffix.lower()
+    if extension not in (".gpx", ".fit"):
+        raise HTTPException(
+            status_code=400,
+            detail="Secondary file must be GPX or FIT",
+        )
+
+    # Determine file type and extract metadata
+    file_type = get_file_type(file_path)
+    gpx_fit_metadata = None
+
+    try:
+        gpx_fit_metadata = extract_gpx_fit_metadata(file_path)
+    except Exception as e:
+        logger.error(f"Failed to extract GPX/FIT metadata: {e}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Could not read {file_type.upper()} file. Ensure it's a valid format.",
+        ) from e
+
+    # Add file to session as secondary
+    try:
+        file_manager.add_file(
+            session_id=request.session_id,
+            filename=file_path.name,
+            file_path=file_path,
+            file_type=file_type,
+            role=FileRole.SECONDARY,
+            gpx_fit_metadata=gpx_fit_metadata,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    # Return all files
+    files = file_manager.get_files(request.session_id)
+
+    return UploadResponse(
+        session_id=request.session_id,
+        files=files,
+    )
+
+
+@router.post("/upload", response_model=UploadResponse)
+async def upload_file(file: Annotated[UploadFile, File(...)]) -> UploadResponse:
+    """Upload a GoPro MP4, GPX, or FIT file as primary."""
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No filename provided")
+
+    # Validate file extension
+    extension = "." + file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+    if extension not in settings.allowed_extensions:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File type not allowed. Allowed: {', '.join(settings.allowed_extensions)}",
+        )
+
+    # Read file content
+    content = await file.read()
+
+    # Check file size
+    if len(content) > settings.max_upload_size_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Maximum size: {settings.max_upload_size_bytes / (1024 * 1024 * 1024):.1f}GB",
+        )
+
+    # Create session and save file
+    session_id = file_manager.create_session()
+    file_path = file_manager.save_file(session_id, file.filename, content)
+
+    # Determine file type
+    file_type = get_file_type(file_path)
+
+    # Extract metadata based on file type
+    video_metadata = None
+    gpx_fit_metadata = None
+
+    if file_type == "video":
+        try:
+            video_metadata = extract_video_metadata(file_path)
+        except Exception as e:
+            logger.error(f"Failed to extract video metadata: {e}")
+            file_manager.cleanup_session(session_id)
+            raise HTTPException(
+                status_code=400,
+                detail="Could not read video file. Ensure it's a valid video format.",
+            ) from e
+    elif file_type in ("gpx", "fit"):
+        try:
+            gpx_fit_metadata = extract_gpx_fit_metadata(file_path)
+        except Exception as e:
+            logger.error(f"Failed to extract GPX/FIT metadata: {e}")
+            file_manager.cleanup_session(session_id)
+            raise HTTPException(
+                status_code=400,
+                detail=f"Could not read {file_type.upper()} file. Ensure it's a valid format.",
+            ) from e
+
+    # Add file to session as primary
+    file_info = file_manager.add_file(
+        session_id=session_id,
+        filename=file.filename,
+        file_path=file_path,
+        file_type=file_type,
+        role=FileRole.PRIMARY,
+        video_metadata=video_metadata,
+        gpx_fit_metadata=gpx_fit_metadata,
+    )
+
+    return UploadResponse(
+        session_id=session_id,
+        files=[file_info],
+    )
+
+
+@router.post("/upload-secondary", response_model=UploadResponse)
+async def upload_secondary_file(
+    session_id: Annotated[str, Form(...)],
+    file: Annotated[UploadFile, File(...)],
+) -> UploadResponse:
+    """Upload a secondary GPX/FIT file to existing session."""
+    # Validate session exists
+    if not file_manager.session_exists(session_id):
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No filename provided")
+
+    # Validate file extension - only GPX/FIT allowed
+    extension = "." + file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+    if extension not in (".gpx", ".fit"):
+        raise HTTPException(
+            status_code=400,
+            detail="Secondary file must be GPX or FIT",
+        )
+
+    # Read file content
+    content = await file.read()
+
+    # Check file size (GPX/FIT are typically small)
+    max_secondary_size = 50 * 1024 * 1024  # 50MB
+    if len(content) > max_secondary_size:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Secondary file too large. Maximum size: {max_secondary_size / (1024 * 1024):.0f}MB",
+        )
+
+    # Save file to session
+    file_path = file_manager.save_file(session_id, file.filename, content)
+
+    # Determine file type and extract metadata
+    file_type = get_file_type(file_path)
+    gpx_fit_metadata = None
+
+    try:
+        gpx_fit_metadata = extract_gpx_fit_metadata(file_path)
+    except Exception as e:
+        logger.error(f"Failed to extract GPX/FIT metadata: {e}")
+        # Remove the file
+        file_path.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Could not read {file_type.upper()} file. Ensure it's a valid format.",
+        ) from e
+
+    # Add file to session as secondary
+    try:
+        file_manager.add_file(
+            session_id=session_id,
+            filename=file.filename,
+            file_path=file_path,
+            file_type=file_type,
+            role=FileRole.SECONDARY,
+            gpx_fit_metadata=gpx_fit_metadata,
+        )
+    except ValueError as e:
+        # Remove the file
+        file_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    # Return all files
+    files = file_manager.get_files(session_id)
+
+    return UploadResponse(
+        session_id=session_id,
+        files=files,
+    )
+
+
+@router.delete("/session/{session_id}/secondary", response_model=UploadResponse)
+async def remove_secondary_file(session_id: str) -> UploadResponse:
+    """Remove secondary file from session."""
+    if not file_manager.session_exists(session_id):
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    removed = file_manager.remove_file_by_role(session_id, FileRole.SECONDARY)
+    if not removed:
+        raise HTTPException(status_code=404, detail="No secondary file in session")
+
+    files = file_manager.get_files(session_id)
+
+    return UploadResponse(
+        session_id=session_id,
+        files=files,
+    )
+
+
+@router.get("/session/{session_id}", response_model=UploadResponse)
+async def get_session(session_id: str) -> UploadResponse:
+    """Get session info if it still exists."""
+    if not file_manager.session_exists(session_id):
+        raise HTTPException(status_code=404, detail="Session not found or expired")
+
+    files = file_manager.get_files(session_id)
+    if not files:
+        raise HTTPException(status_code=404, detail="No files in session")
+
+    return UploadResponse(
+        session_id=session_id,
+        files=files,
+    )

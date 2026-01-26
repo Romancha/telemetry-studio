@@ -1,0 +1,30 @@
+"""Tests for configuration module."""
+
+import os
+
+
+def test_default_settings():
+    """Test default settings are loaded correctly."""
+    # Import inside test to avoid side effects
+    from telemetry_studio.config import Settings
+
+    # Create settings with defaults
+    settings = Settings()
+
+    assert settings.host == "0.0.0.0"
+    assert settings.port == 8000
+    assert settings.local_mode is True
+    assert ".telemetry-studio" in str(settings.templates_dir)
+
+
+def test_env_prefix():
+    """Test that environment variables use TELEMETRY_STUDIO_ prefix."""
+    os.environ["TELEMETRY_STUDIO_PORT"] = "9000"
+
+    try:
+        from telemetry_studio.config import Settings
+
+        settings = Settings()
+        assert settings.port == 9000
+    finally:
+        del os.environ["TELEMETRY_STUDIO_PORT"]

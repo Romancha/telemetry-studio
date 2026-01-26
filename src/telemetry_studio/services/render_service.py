@@ -1,0 +1,391 @@
+"""Video rendering service using gopro-dashboard.py subprocess."""
+
+import asyncio
+import contextlib
+import logging
+import os
+import re
+import shlex
+import signal
+import sys
+from pathlib import Path
+
+from telemetry_studio.config import settings
+from telemetry_studio.models.job import JobStatus, RenderJobConfig
+from telemetry_studio.services.job_manager import job_manager
+from telemetry_studio.services.renderer import generate_cli_command
+
+# Apply runtime patches if enabled
+if settings.enable_gopro_patches:
+    from telemetry_studio.patches import apply_patches
+
+    apply_patches()
+
+logger = logging.getLogger(__name__)
+
+
+class RenderService:
+    """Handles video rendering as background subprocess."""
+
+    def __init__(self):
+        self._process: asyncio.subprocess.Process | None = None
+        self._current_job_id: str | None = None
+        self._lock = asyncio.Lock()
+
+    async def _kill_process_tree(self):
+        """Kill the current process and all its children (ffmpeg, etc.)."""
+        if not self._process:
+            return
+        pid = self._process.pid
+        try:
+            if sys.platform != "win32":
+                # Kill entire process group on Unix
+                os.killpg(pid, signal.SIGKILL)
+            else:
+                self._process.kill()
+            await self._process.wait()
+        except ProcessLookupError:
+            pass  # Process already dead
+        except Exception:
+            pass
+
+    async def start_render(self, job_id: str, config: RenderJobConfig):
+        """Start rendering process for a job."""
+
+        # Check if already rendering (with lock for race safety)
+        async with self._lock:
+            if self._current_job_id is not None and self._current_job_id != job_id:
+                logger.warning(f"Cannot start job {job_id}: another job is running ({self._current_job_id})")
+                return
+            # Claim the slot (or confirm already pre-claimed by _start_next_pending_job)
+            self._current_job_id = job_id
+
+        # Helper to clear current job on early failure
+        async def _clear_current_job():
+            async with self._lock:
+                self._process = None
+                self._current_job_id = None
+            await self._start_next_pending_job()
+
+        # Generate CLI command
+        try:
+            command = generate_cli_command(
+                session_id=config.session_id,
+                output_file=config.output_file,
+                layout=config.layout,
+                layout_xml_path=config.layout_xml_path,
+                units_speed=config.units_speed,
+                units_altitude=config.units_altitude,
+                units_distance=config.units_distance,
+                units_temperature=config.units_temperature,
+                map_style=config.map_style,
+                gpx_merge_mode=config.gpx_merge_mode,
+                video_time_alignment=config.video_time_alignment,
+                ffmpeg_profile=config.ffmpeg_profile,
+            )
+        except Exception as e:
+            error_msg = f"Failed to generate command: {e}"
+            await job_manager.append_job_log(job_id, f"ERROR: {error_msg}")
+            await job_manager.update_job_status(job_id, JobStatus.FAILED, error_msg)
+            logger.error(f"Failed to generate command for job {job_id}: {e}")
+            await _clear_current_job()
+            return
+
+        # Find gopro-dashboard.py location
+        gopro_dashboard = self._find_gopro_dashboard()
+        if not gopro_dashboard:
+            error = "gopro-dashboard.py not found"
+            await job_manager.update_job_status(job_id, JobStatus.FAILED, error)
+            logger.error(f"Job {job_id}: {error}")
+            await _clear_current_job()
+            return
+
+        # Parse command into args
+        try:
+            args = shlex.split(command)
+            # Replace script name with full path
+            args[0] = str(gopro_dashboard)
+        except Exception as e:
+            await job_manager.update_job_status(job_id, JobStatus.FAILED, f"Failed to parse command: {e}")
+            await _clear_current_job()
+            return
+
+        logger.info(f"Starting render job {job_id}")
+        logger.info(f"Generated command: {command}")
+        logger.info(f"Parsed args: {args}")
+
+        await job_manager.update_job_status(job_id, JobStatus.RUNNING)
+
+        # Log the command to job logs for UI visibility
+        await job_manager.append_job_log(job_id, "=== Command ===")
+        # Use shlex.join to properly quote paths with spaces
+        await job_manager.append_job_log(job_id, f"{sys.executable} {shlex.join(args)}")
+        await job_manager.append_job_log(job_id, "=== Output ===")
+
+        try:
+            # Start subprocess in new session (Unix) to enable killing entire process group
+            # This ensures child processes (ffmpeg) are also terminated on cancel
+            self._process = await asyncio.create_subprocess_exec(
+                sys.executable,
+                *args,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                env=self._get_process_env(),
+                start_new_session=True,
+            )
+
+            await job_manager.set_job_pid(job_id, self._process.pid)
+            logger.info(f"Job {job_id} started with PID {self._process.pid}")
+
+            # Stream output and parse progress
+            await self._stream_output(job_id)
+
+            # Wait for completion
+            returncode = await self._process.wait()
+
+            if returncode == 0:
+                await job_manager.update_job_status(job_id, JobStatus.COMPLETED)
+                await job_manager.update_job_progress(job_id, 100)
+                logger.info(f"Job {job_id} completed successfully")
+            else:
+                error = f"Process exited with code {returncode}"
+                await job_manager.append_job_log(job_id, "\n=== Failed ===")
+                await job_manager.append_job_log(job_id, error)
+                await job_manager.update_job_status(job_id, JobStatus.FAILED, error)
+                logger.error(f"Job {job_id} failed: {error}")
+
+        except asyncio.CancelledError:
+            # Kill the subprocess and all children before marking as cancelled
+            await self._kill_process_tree()
+            await job_manager.update_job_status(job_id, JobStatus.CANCELLED)
+            logger.info(f"Job {job_id} cancelled")
+            raise
+        except Exception as e:
+            # Kill subprocess and all children on error
+            await self._kill_process_tree()
+            await job_manager.update_job_status(job_id, JobStatus.FAILED, str(e))
+            logger.exception(f"Job {job_id} failed with exception")
+        finally:
+            async with self._lock:
+                self._process = None
+                self._current_job_id = None
+            # Auto-start next pending job if exists (for batch processing)
+            await self._start_next_pending_job()
+
+    async def _start_next_pending_job(self):
+        """Start the next pending job in queue if exists (with lock protection)."""
+        async with self._lock:
+            # Double-check no job is running before starting next
+            if self._current_job_id is not None:
+                return
+            next_job = await job_manager.get_next_pending_job()
+            if next_job:
+                logger.info(f"Auto-starting next pending job: {next_job.id}")
+                # Set current job ID immediately to prevent races
+                self._current_job_id = next_job.id
+
+        # Start render outside of lock (but we've claimed the slot)
+        if next_job:
+            # Don't use create_task - run synchronously to properly await
+            await self.start_render(next_job.id, next_job.config)
+
+    async def _stream_output(self, job_id: str):
+        """Stream subprocess output and parse progress."""
+        if not self._process or not self._process.stdout:
+            return
+
+        # Full pattern for gopro-dashboard.py output:
+        # "Render: 22 [  0%]  [  6.8/s] |...| ETA:   0:07:33"
+        render_pattern = re.compile(r"Render:\s*([\d,]+)\s*\[\s*(\d+)%\]\s*\[\s*([\d.]+)/s\].*?ETA:\s*(\d+:\d+:\d+)")
+
+        # Simpler fallback patterns
+        progress_patterns = [
+            # Pattern 1: "Render: 1234 [ 56%]" with spaces inside brackets
+            re.compile(r"Render:\s*([\d,]+)\s*\[\s*(\d+)%\]"),
+            # Pattern 2: Any percentage in brackets with possible spaces
+            re.compile(r"\[\s*(\d+(?:\.\d+)?)%\]"),
+            # Pattern 3: Frame X/Y format
+            re.compile(r"Frame\s+(\d+)/(\d+)"),
+            # Pattern 4: frame= from ffmpeg
+            re.compile(r"frame=\s*(\d+)"),
+        ]
+
+        # Total frames pattern (from timeseries info)
+        total_pattern = re.compile(r"(\d+)\s*(?:frames|data points)")
+
+        total_frames = None
+
+        async for line in self._process.stdout:
+            line_str = line.decode("utf-8", errors="replace").strip()
+            if not line_str:
+                continue
+
+            # Append to log
+            await job_manager.append_job_log(job_id, line_str)
+
+            # Try to extract total frames
+            if total_frames is None:
+                total_match = total_pattern.search(line_str)
+                if total_match:
+                    total_frames = int(total_match.group(1))
+
+            # Try full render pattern first (includes FPS and ETA)
+            render_match = render_pattern.search(line_str)
+            if render_match:
+                current_frame = int(render_match.group(1).replace(",", ""))
+                percent = float(render_match.group(2))
+                fps = float(render_match.group(3))
+                eta_str = render_match.group(4)  # "0:07:33"
+                # Parse ETA to seconds
+                parts = eta_str.split(":")
+                eta_seconds = int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+
+                await job_manager.update_job_progress(
+                    job_id,
+                    percent=percent,
+                    current_frame=current_frame,
+                    total_frames=total_frames,
+                    fps=fps,
+                    eta_seconds=eta_seconds,
+                )
+                continue
+
+            # Fallback to simpler patterns
+            for pattern in progress_patterns:
+                match = pattern.search(line_str)
+                if match:
+                    groups = match.groups()
+                    if len(groups) == 1:
+                        # Percentage or frame count
+                        value = float(groups[0])
+                        if value <= 100:
+                            await job_manager.update_job_progress(
+                                job_id,
+                                percent=value,
+                                total_frames=total_frames,
+                            )
+                        else:
+                            current_frame = int(value)
+                            percent = (current_frame / total_frames * 100) if total_frames else 0
+                            await job_manager.update_job_progress(
+                                job_id,
+                                percent=percent,
+                                current_frame=current_frame,
+                                total_frames=total_frames,
+                            )
+                    elif len(groups) == 2:
+                        # Render pattern: frame, percent or Frame X/Y format
+                        try:
+                            current_frame = int(groups[0].replace(",", ""))
+                            percent = float(groups[1])
+                            await job_manager.update_job_progress(
+                                job_id,
+                                percent=percent,
+                                current_frame=current_frame,
+                                total_frames=total_frames,
+                            )
+                        except ValueError:
+                            pass
+                    break
+
+    async def cancel_render(self, job_id: str) -> bool:
+        """Cancel a running render job."""
+        if self._current_job_id != job_id:
+            logger.warning(f"Cannot cancel job {job_id}: not the current job")
+            return False
+
+        if not self._process:
+            logger.warning(f"Cannot cancel job {job_id}: no process running")
+            return False
+
+        pid = self._process.pid
+        logger.info(f"Cancelling job {job_id} (PID {pid})")
+
+        try:
+            # Kill entire process group (includes child processes like ffmpeg)
+            # On Unix, start_new_session=True creates a new process group with pgid=pid
+            if sys.platform != "win32":
+                try:
+                    os.killpg(pid, signal.SIGTERM)
+                    logger.info(f"Sent SIGTERM to process group {pid}")
+                except ProcessLookupError:
+                    pass  # Process group already dead
+
+            # Wait up to 5 seconds for graceful termination
+            try:
+                await asyncio.wait_for(self._process.wait(), timeout=5.0)
+            except TimeoutError:
+                # Force kill the entire process group
+                logger.warning(f"Force killing job {job_id}")
+                if sys.platform != "win32":
+                    with contextlib.suppress(ProcessLookupError):
+                        os.killpg(pid, signal.SIGKILL)
+                else:
+                    self._process.kill()
+                await self._process.wait()
+
+            await job_manager.update_job_status(job_id, JobStatus.CANCELLED)
+            return True
+
+        except ProcessLookupError:
+            # Process already dead
+            logger.info(f"Job {job_id} process already terminated")
+            return True
+        except Exception:
+            logger.exception(f"Error cancelling job {job_id}")
+            return False
+
+    def _find_gopro_dashboard(self) -> Path | None:
+        """Locate gopro-dashboard.py script or wrapper.
+
+        If wrapper script is enabled in settings, returns the wrapper which
+        applies runtime patches before executing the original gopro-dashboard.py.
+        """
+        # If wrapper script is enabled, use it to ensure patches are applied
+        if settings.use_wrapper_script:
+            wrapper_path = Path(__file__).parent.parent / "scripts" / "gopro_dashboard_wrapper.py"
+            if wrapper_path.exists():
+                logger.info(f"Using wrapper script: {wrapper_path}")
+                return wrapper_path
+            else:
+                logger.warning(f"Wrapper script not found at {wrapper_path}, falling back to original")
+
+        # Check bin/ directory relative to project root
+        current_file = Path(__file__)
+        # Navigate from services/ up to project root
+        project_root = current_file.parents[3]  # services -> telemetry_studio -> src -> project
+        bin_script = project_root / "bin" / "gopro-dashboard.py"
+        if bin_script.exists():
+            return bin_script
+
+        # Check PATH
+        import shutil
+
+        path_script = shutil.which("gopro-dashboard.py")
+        if path_script:
+            return Path(path_script)
+
+        return None
+
+    def _get_process_env(self) -> dict:
+        """Get environment variables for subprocess."""
+        env = os.environ.copy()
+
+        # Disable Python output buffering to ensure all output is captured
+        env["PYTHONUNBUFFERED"] = "1"
+
+        # Set PYTHONPATH to include project root
+        current_file = Path(__file__)
+        project_root = current_file.parents[3]
+
+        pythonpath = env.get("PYTHONPATH", "")
+        if pythonpath:
+            env["PYTHONPATH"] = f"{project_root}:{pythonpath}"
+        else:
+            env["PYTHONPATH"] = str(project_root)
+
+        return env
+
+
+# Global render service instance
+render_service = RenderService()
