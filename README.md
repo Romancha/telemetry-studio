@@ -149,4 +149,4 @@ This project is licensed under the GPL-3.0 License - see the [LICENSE](LICENSE) 
 
 ## Acknowledgments
 
-- [gopro-overlay](https://github.com/time4tea/gopro-dashboard-overlay) — The underlying overlay rendering engine
+- [gopro-dashboard-overlay](https://github.com/time4tea/gopro-dashboard-overlay) — The underlying overlay rendering engine
