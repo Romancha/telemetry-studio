@@ -50,7 +50,7 @@ Process multiple videos at once with the same overlay settings.
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Clone the repository
-git clone https://github.com/user/telemetry-studio.git
+git clone https://github.com/Romancha/telemetry-studio.git
 cd telemetry-studio
 
 # Install dependencies
