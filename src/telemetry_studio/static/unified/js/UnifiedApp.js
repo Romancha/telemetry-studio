@@ -204,6 +204,18 @@ class UnifiedApp {
             this.gpxOptionsPanel = new GpxOptionsPanel(gpxOptionsContainer, this.state);
         }
 
+        // GPS Quality Card (sidebar)
+        const gpsQualityContainer = document.getElementById('gps-quality-container');
+        if (gpsQualityContainer) {
+            this.gpsQualityCard = new GPSQualityCard(gpsQualityContainer, this.state);
+        }
+
+        // GPS Quality Indicator (header)
+        const gpsIndicatorContainer = document.getElementById('gps-indicator-container');
+        if (gpsIndicatorContainer) {
+            this.gpsQualityIndicator = new GPSQualityIndicator(gpsIndicatorContainer, this.state);
+        }
+
         // Render Modal
         this.renderModal = new RenderModal(this.state);
 

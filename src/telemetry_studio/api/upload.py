@@ -15,6 +15,7 @@ from telemetry_studio.models.schemas import (
     UploadResponse,
 )
 from telemetry_studio.services.file_manager import file_manager
+from telemetry_studio.services.gps_analyzer import analyze_gps_quality
 from telemetry_studio.services.metadata import (
     extract_gpx_fit_metadata,
     extract_video_metadata,
@@ -72,6 +73,7 @@ async def use_local_file(request: LocalFileRequest) -> UploadResponse:
     file_type = get_file_type(file_path)
     video_metadata = None
     gpx_fit_metadata = None
+    gps_quality = None
 
     if file_type == "video":
         try:
@@ -83,6 +85,15 @@ async def use_local_file(request: LocalFileRequest) -> UploadResponse:
                 status_code=400,
                 detail="Could not read video file. Ensure it's a valid video format.",
             ) from e
+
+        # Analyze GPS quality if video has GPS data
+        if video_metadata and video_metadata.has_gps:
+            try:
+                gps_quality = analyze_gps_quality(file_path)
+            except Exception as e:
+                logger.warning(f"Failed to analyze GPS quality: {e}")
+                # Don't fail the upload, just skip GPS quality analysis
+
     elif file_type in ("gpx", "fit"):
         try:
             gpx_fit_metadata = extract_gpx_fit_metadata(file_path)
@@ -103,6 +114,7 @@ async def use_local_file(request: LocalFileRequest) -> UploadResponse:
         role=FileRole.PRIMARY,
         video_metadata=video_metadata,
         gpx_fit_metadata=gpx_fit_metadata,
+        gps_quality=gps_quality,
     )
 
     return UploadResponse(
@@ -213,6 +225,7 @@ async def upload_file(file: Annotated[UploadFile, File(...)]) -> UploadResponse:
     # Extract metadata based on file type
     video_metadata = None
     gpx_fit_metadata = None
+    gps_quality = None
 
     if file_type == "video":
         try:
@@ -224,6 +237,15 @@ async def upload_file(file: Annotated[UploadFile, File(...)]) -> UploadResponse:
                 status_code=400,
                 detail="Could not read video file. Ensure it's a valid video format.",
             ) from e
+
+        # Analyze GPS quality if video has GPS data
+        if video_metadata and video_metadata.has_gps:
+            try:
+                gps_quality = analyze_gps_quality(file_path)
+            except Exception as e:
+                logger.warning(f"Failed to analyze GPS quality: {e}")
+                # Don't fail the upload, just skip GPS quality analysis
+
     elif file_type in ("gpx", "fit"):
         try:
             gpx_fit_metadata = extract_gpx_fit_metadata(file_path)
@@ -244,6 +266,7 @@ async def upload_file(file: Annotated[UploadFile, File(...)]) -> UploadResponse:
         role=FileRole.PRIMARY,
         video_metadata=video_metadata,
         gpx_fit_metadata=gpx_fit_metadata,
+        gps_quality=gps_quality,
     )
 
     return UploadResponse(

@@ -2108,6 +2108,40 @@ select {
     font-size: var(--font-size-sm);
 }
 
+.batch-options {
+    margin-top: var(--space-3);
+    padding: var(--space-3);
+    background: var(--color-bg-input);
+    border-radius: var(--radius-md);
+}
+
+.batch-options .checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--font-size-sm);
+    color: var(--color-text-primary);
+    cursor: pointer;
+    margin-bottom: var(--space-1);
+}
+
+.batch-options .form-hint {
+    margin-left: calc(1rem + var(--space-2));
+    color: var(--color-text-muted);
+}
+
+.batch-analyzing {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-top: var(--space-3);
+    padding: var(--space-3);
+    background: var(--color-bg-elevated);
+    border-radius: var(--radius-md);
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+}
+
 .batch-overall-progress {
     margin-bottom: var(--space-4);
 }
@@ -2381,4 +2415,527 @@ select {
     .toast.hiding {
         transform: translateY(-100%);
     }
+}
+
+/* ============================================
+   OVERWRITE CONFIRM DIALOG
+   ============================================ */
+
+.overwrite-confirm-modal {
+    min-width: 450px;
+    max-width: 550px;
+}
+
+.overwrite-message {
+    color: var(--color-text-secondary);
+    margin-bottom: var(--space-3);
+}
+
+.overwrite-file-list {
+    max-height: 200px;
+    overflow-y: auto;
+    background: var(--color-bg-input);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: var(--space-2);
+}
+
+.overwrite-file-item {
+    padding: var(--space-2) var(--space-3);
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-sm);
+    color: var(--color-text-primary);
+    word-break: break-all;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.overwrite-file-item:last-child {
+    border-bottom: none;
+}
+
+.overwrite-footer {
+    display: flex;
+    gap: var(--space-3);
+    justify-content: flex-end;
+}
+
+.btn-danger {
+    background: var(--color-error);
+    color: white;
+    border: none;
+}
+
+.btn-danger:hover {
+    background: #dc2626;
+}
+
+.btn-warning {
+    background: var(--color-warning);
+    color: var(--color-bg-primary);
+    border: none;
+}
+
+.btn-warning:hover {
+    background: #d97706;
+}
+
+/* ============================================
+   GPS BATCH WARNING DIALOG
+   ============================================ */
+
+.gps-batch-warning-modal {
+    min-width: 550px;
+    max-width: 700px;
+}
+
+.gps-batch-message {
+    color: var(--color-text-secondary);
+    margin-bottom: var(--space-3);
+}
+
+.gps-batch-table-container {
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-3);
+}
+
+.gps-batch-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--font-size-sm);
+}
+
+.gps-batch-table thead {
+    position: sticky;
+    top: 0;
+    background: var(--color-bg-elevated);
+    z-index: 1;
+}
+
+.gps-batch-table th {
+    padding: var(--space-2) var(--space-3);
+    text-align: left;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.gps-batch-table td {
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.gps-batch-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.gps-batch-table tbody tr:hover {
+    background: var(--color-bg-hover);
+}
+
+.gps-row-issue {
+    background: rgba(239, 68, 68, 0.1);
+}
+
+.gps-row-issue:hover {
+    background: rgba(239, 68, 68, 0.15) !important;
+}
+
+.gps-cell-filename {
+    font-family: var(--font-family-mono);
+    max-width: 250px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.gps-cell-quality {
+    white-space: nowrap;
+}
+
+.gps-cell-usable,
+.gps-cell-dop {
+    text-align: center;
+    color: var(--color-text-secondary);
+}
+
+/* GPS Quality Badges */
+.gps-quality-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    font-size: var(--font-size-xs);
+    font-weight: 500;
+}
+
+.gps-quality-excellent {
+    background: rgba(34, 197, 94, 0.2);
+    color: #22c55e;
+}
+
+.gps-quality-good {
+    background: rgba(34, 197, 94, 0.15);
+    color: #4ade80;
+}
+
+.gps-quality-ok {
+    background: rgba(234, 179, 8, 0.2);
+    color: #eab308;
+}
+
+.gps-quality-poor {
+    background: rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+}
+
+.gps-quality-no-signal {
+    background: rgba(239, 68, 68, 0.3);
+    color: #ef4444;
+    font-weight: 600;
+}
+
+.gps-quality-skipped {
+    background: var(--color-bg-input);
+    color: var(--color-text-muted);
+}
+
+.gps-quality-error {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--color-text-muted);
+}
+
+.gps-batch-hint {
+    font-size: var(--font-size-sm);
+    color: var(--color-warning);
+    margin: 0;
+}
+
+.gps-batch-footer {
+    display: flex;
+    gap: var(--space-3);
+    justify-content: flex-end;
+}
+
+/* Confirmation dialogs should appear above other modals */
+#overwrite-confirm-modal,
+#gps-batch-warning-modal {
+    z-index: 1100;
+}
+
+/* ============================================
+   GPS QUALITY COMPONENTS
+   ============================================ */
+
+/* GPS Quality Card (sidebar) */
+.gps-quality-card {
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: var(--space-3);
+    margin-top: var(--space-3);
+}
+
+.gps-quality-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-bottom: var(--space-3);
+}
+
+.gps-quality-icon {
+    width: 16px;
+    height: 16px;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23a0a0a0'%3E%3Cpath d='M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z'/%3E%3C/svg%3E") no-repeat center;
+    background-size: contain;
+}
+
+.gps-quality-title {
+    flex: 1;
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    color: var(--color-text-primary);
+}
+
+.gps-quality-badge {
+    padding: 2px 8px;
+    border-radius: var(--radius-full);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+}
+
+.gps-quality-excellent,
+.gps-quality-good {
+    background: rgba(78, 205, 196, 0.2);
+    color: var(--color-success);
+}
+
+.gps-quality-ok {
+    background: rgba(255, 209, 102, 0.2);
+    color: var(--color-warning);
+}
+
+.gps-quality-poor {
+    background: rgba(255, 159, 67, 0.2);
+    color: #ff9f43;
+}
+
+.gps-quality-no_signal {
+    background: rgba(239, 71, 111, 0.2);
+    color: var(--color-error);
+}
+
+.gps-quality-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+/* GPS Quality Bars */
+.gps-bar-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--font-size-xs);
+}
+
+.gps-bar-label {
+    width: 60px;
+    color: var(--color-text-secondary);
+}
+
+.gps-bar-track {
+    flex: 1;
+    height: 8px;
+    background: var(--color-bg-input);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+}
+
+.gps-bar-fill {
+    height: 100%;
+    border-radius: var(--radius-full);
+    transition: width var(--transition-base);
+}
+
+.gps-bar-excellent {
+    background: var(--color-success);
+}
+
+.gps-bar-good {
+    background: #2dd36f;
+}
+
+.gps-bar-ok {
+    background: var(--color-warning);
+}
+
+.gps-bar-poor {
+    background: #ff9f43;
+}
+
+.gps-bar-pct {
+    width: 35px;
+    text-align: right;
+    color: var(--color-text-muted);
+}
+
+/* GPS No Signal State */
+.gps-no-signal {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: var(--space-4) var(--space-2);
+    text-align: center;
+}
+
+.gps-no-signal-icon {
+    color: var(--color-error);
+    margin-bottom: var(--space-2);
+}
+
+.gps-no-signal-text {
+    font-weight: var(--font-weight-medium);
+    color: var(--color-error);
+    margin-bottom: var(--space-1);
+}
+
+.gps-no-signal-hint {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-muted);
+}
+
+/* GPS Quality Stats */
+.gps-quality-stats {
+    display: flex;
+    justify-content: space-between;
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--color-border);
+}
+
+.gps-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    font-size: var(--font-size-xs);
+}
+
+.gps-stat-label {
+    color: var(--color-text-muted);
+}
+
+.gps-stat-value {
+    color: var(--color-text-primary);
+    font-weight: var(--font-weight-medium);
+}
+
+/* GPS Quality Warnings */
+.gps-quality-warnings {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.gps-warning-item {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    background: rgba(255, 209, 102, 0.1);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-size-xs);
+    color: var(--color-warning);
+}
+
+.gps-warning-icon {
+    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-warning);
+    color: var(--color-bg-app);
+    border-radius: var(--radius-full);
+    font-size: 10px;
+    font-weight: var(--font-weight-bold);
+}
+
+/* GPS Quality Indicator (header) */
+.gps-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 2px 8px;
+    border-radius: var(--radius-full);
+    font-size: var(--font-size-xs);
+    cursor: help;
+    position: relative;
+}
+
+.gps-indicator-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: var(--radius-full);
+}
+
+.gps-indicator-excellent .gps-indicator-dot,
+.gps-indicator-good .gps-indicator-dot {
+    background: var(--color-success);
+}
+
+.gps-indicator-ok .gps-indicator-dot {
+    background: var(--color-warning);
+}
+
+.gps-indicator-poor .gps-indicator-dot {
+    background: #ff9f43;
+}
+
+.gps-indicator-no_signal .gps-indicator-dot {
+    background: var(--color-error);
+}
+
+.gps-indicator-text {
+    color: var(--color-text-secondary);
+}
+
+.gps-indicator-tooltip {
+    visibility: hidden;
+    opacity: 0;
+    position: absolute;
+    bottom: calc(100% + 4px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--font-size-xs);
+    white-space: nowrap;
+    z-index: 1000;
+    box-shadow: var(--shadow-lg);
+    pointer-events: none;
+    transition: opacity 0.15s ease, visibility 0.15s ease;
+}
+
+.gps-indicator:hover .gps-indicator-tooltip {
+    visibility: visible;
+    opacity: 1;
+}
+
+/* GPS Warning Modal */
+.gps-warning-modal {
+    max-width: 450px;
+}
+
+.gps-warning-modal .modal-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.modal-warning-icon {
+    color: var(--color-warning);
+}
+
+.gps-warning-message {
+    margin-bottom: var(--space-4);
+}
+
+.gps-warning-message ul {
+    margin: var(--space-2) 0 0 var(--space-4);
+    padding: 0;
+}
+
+.gps-warning-message li {
+    margin-bottom: var(--space-1);
+    color: var(--color-text-secondary);
+}
+
+.gps-warning-consequences {
+    background: var(--color-bg-input);
+    border-radius: var(--radius-md);
+    padding: var(--space-3);
+}
+
+.gps-warning-consequences ul {
+    margin: var(--space-2) 0 0 var(--space-4);
+    padding: 0;
+}
+
+.gps-warning-consequences li {
+    margin-bottom: var(--space-1);
+    color: var(--color-text-secondary);
+}
+
+.btn-warning {
+    background: var(--color-warning);
+    color: var(--color-bg-app);
+    border: none;
+}
+
+.btn-warning:hover {
+    background: #e6bc5c;
 }

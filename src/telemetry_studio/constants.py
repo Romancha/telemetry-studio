@@ -67,9 +67,22 @@ DEFAULT_GPX_MERGE_MODE = "OVERWRITE"
 # =============================================================================
 # GPS FILTER DEFAULTS
 # =============================================================================
-# These values are less strict than gopro-dashboard CLI defaults:
-# - CLI default DOP max: 10 (too strict for moving vehicles)
-# - CLI default speed max: 60 kph (too low for motorcycles/cars)
+# DOP max matches gopro-dashboard CLI default (10)
+# Speed max is higher than CLI default (60) to support motorcycles/cars
 
-DEFAULT_GPS_DOP_MAX = 20.0  # GPS dilution of precision max (CLI default: 10)
-DEFAULT_GPS_SPEED_MAX = 200.0  # Max speed in kph to filter outliers (CLI default: 60)
+DEFAULT_GPS_DOP_MAX = 10.0  # GPS dilution of precision max
+DEFAULT_GPS_SPEED_MAX = 200.0  # Max speed in kph to filter outliers
+
+# =============================================================================
+# GPS QUALITY THRESHOLDS
+# =============================================================================
+# Based on GPS accuracy best practices:
+# https://gisgeography.com/gps-accuracy-hdop-pdop-gdop-multipath/
+
+DOP_THRESHOLD_EXCELLENT = 2.0  # DOP < 2: Ideal for precise tracking
+DOP_THRESHOLD_GOOD = 5.0       # DOP 2-5: Suitable for most applications
+DOP_THRESHOLD_MODERATE = 10.0  # DOP 5-10: Acceptable, some accuracy loss
+# DOP > 10: Poor/unreliable positioning
+# DOP = 99.99: No GPS signal (GoPro default when no lock)
+
+GPS_QUALITY_SCORES = ("excellent", "good", "ok", "poor", "no_signal")

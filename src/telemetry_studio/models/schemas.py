@@ -1,6 +1,7 @@
 """Pydantic request/response models for Telemetry Studio API."""
 
 from enum import Enum
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -39,6 +40,42 @@ class GpxFitMetadata(BaseModel):
     duration_seconds: float | None = None
 
 
+# Type alias for GPS quality scores
+GPSQualityScore = Literal["excellent", "good", "ok", "poor", "no_signal"]
+
+
+class GPSQualityReport(BaseModel):
+    """GPS signal quality analysis report."""
+
+    # General statistics
+    total_points: int = Field(description="Total number of GPS data points")
+    locked_points: int = Field(description="Number of points with GPS lock")
+    lock_rate: float = Field(description="Percentage of points with GPS lock (0-100)")
+
+    # DOP (Dilution of Precision) statistics
+    dop_min: float | None = Field(default=None, description="Minimum DOP value")
+    dop_max: float | None = Field(default=None, description="Maximum DOP value")
+    dop_mean: float | None = Field(default=None, description="Mean DOP value")
+    dop_median: float | None = Field(default=None, description="Median DOP value")
+
+    # Quality distribution (point counts by DOP range)
+    excellent_count: int = Field(default=0, description="Points with DOP < 2")
+    good_count: int = Field(default=0, description="Points with DOP 2-5")
+    moderate_count: int = Field(default=0, description="Points with DOP 5-10")
+    poor_count: int = Field(default=0, description="Points with DOP > 10")
+
+    # Overall assessment
+    quality_score: GPSQualityScore = Field(description="Overall quality rating")
+    usable_percentage: float = Field(
+        description="Percentage of points with acceptable quality (DOP < 10)"
+    )
+
+    # User guidance
+    warnings: list[str] = Field(
+        default_factory=list, description="Warning messages for the user"
+    )
+
+
 class FileInfo(BaseModel):
     """Information about a file in the session."""
 
@@ -48,6 +85,7 @@ class FileInfo(BaseModel):
     role: FileRole
     video_metadata: VideoMetadata | None = None
     gpx_fit_metadata: GpxFitMetadata | None = None
+    gps_quality: GPSQualityReport | None = None
 
 
 class GpxFitOptions(BaseModel):

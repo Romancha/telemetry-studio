@@ -51,6 +51,20 @@ class BatchRenderModal {
                             <div class="batch-preview">
                                 <strong>Files to process: <span id="batch-file-count">0</span></strong>
                             </div>
+
+                            <div class="batch-options">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="batch-pre-checks" checked>
+                                    <span>Pre-checks</span>
+                                </label>
+                                <small class="form-hint">Check for existing output files and GPS quality issues before starting</small>
+                            </div>
+
+                            <!-- Analyzing state -->
+                            <div id="batch-analyzing" class="batch-analyzing" style="display: none;">
+                                <span class="spinner-small"></span>
+                                <span>Analyzing files...</span>
+                            </div>
                         </div>
 
                         <!-- Progress View -->
@@ -153,6 +167,10 @@ class BatchRenderModal {
         // Log elements
         this.logContent = document.getElementById('batch-log-content');
         this.logToggleBtn = document.getElementById('batch-log-toggle');
+
+        // Pre-check elements
+        this.preChecksCheckbox = document.getElementById('batch-pre-checks');
+        this.analyzingEl = document.getElementById('batch-analyzing');
     }
 
     _attachEventListeners() {
@@ -169,12 +187,8 @@ class BatchRenderModal {
             this.logToggleBtn.textContent = isHidden ? 'Hide' : 'Show';
         });
 
-        // Close on overlay click (only in input mode)
-        this.modal.addEventListener('click', (e) => {
-            if (e.target === this.modal && !this.batchId) {
-                this.close();
-            }
-        });
+        // NOTE: Overlay click close is intentionally disabled
+        // Modal closes only via Cancel/Close buttons
     }
 
     async _handleClose() {
@@ -269,120 +283,155 @@ class BatchRenderModal {
         return layout.startsWith('default-') || layout.startsWith('speed-awareness');
     }
 
+    /**
+     * Generate output path for a video file
+     */
+    _generateOutputPath(videoPath) {
+        const lastSlash = videoPath.lastIndexOf('/');
+        const lastDot = videoPath.lastIndexOf('.');
+        const dir = lastSlash > -1 ? videoPath.substring(0, lastSlash) : '.';
+        const name = videoPath.substring(lastSlash + 1, lastDot > lastSlash ? lastDot : undefined);
+        return `${dir}/${name}_overlay.mp4`;
+    }
+
     async _startBatchRender() {
-        const files = this._parseFileInput();
+        let files = this._parseFileInput();
 
         if (files.length === 0) {
             window.toast.error('Please enter at least one file path', { title: 'No Files' });
             return;
         }
 
+        const preChecksEnabled = this.preChecksCheckbox?.checked ?? true;
+
+        // Show analyzing state
+        this.startBtn.disabled = true;
+
         try {
-            let layout = 'default';
-            let layoutXmlPath = null;
+            // Run pre-checks if enabled
+            if (preChecksEnabled) {
+                this.startBtn.textContent = 'Analyzing...';
+                this.analyzingEl.style.display = 'flex';
 
-            // Get layout based on current mode
-            if (this.state.mode === 'quick') {
-                // Quick mode: use quickConfig.layout
-                const layoutName = this.state.quickConfig?.layout || 'default-1920x1080';
+                // Call pre-check API (overwrite + GPS quality check)
+                const preCheck = await this._preCheckFiles(files);
 
-                if (!this._isPredefinedLayout(layoutName)) {
-                    // Custom template in quick mode
-                    const templateService = new TemplateService();
-                    try {
-                        const pathResponse = await templateService.getTemplatePath(layoutName);
-                        layout = 'xml';
-                        layoutXmlPath = pathResponse.file_path;
-                    } catch (err) {
-                        window.toast.error(
-                            `Template "${layoutName}" not found.`,
-                            { title: 'Template Not Found' }
+                this.analyzingEl.style.display = 'none';
+
+                // 1. Handle overwrite conflicts
+                if (preCheck.overwrite_conflicts && preCheck.overwrite_conflicts.length > 0) {
+                    const existingPaths = preCheck.overwrite_conflicts.map(c => c.output_path);
+                    let decision;
+
+                    if (window.overwriteConfirmDialog) {
+                        decision = await window.overwriteConfirmDialog.show(
+                            existingPaths,
+                            { showSkip: true }
                         );
+                    } else {
+                        // Fallback to browser confirm
+                        const fileList = existingPaths.slice(0, 5).join('\n');
+                        const more = existingPaths.length > 5
+                            ? `\n...and ${existingPaths.length - 5} more` : '';
+                        decision = confirm(`${existingPaths.length} file(s) already exist:\n${fileList}${more}\n\nOverwrite all?`)
+                            ? 'overwrite' : null;
+                    }
+
+                    if (decision === null) {
+                        // User cancelled
                         return;
                     }
-                } else {
-                    layout = layoutName;
-                }
-            } else {
-                // Advanced mode: get from TemplateManager
-                const templateManager = window.app?.modeToggle?.templateManager;
-                const selectedTemplate = templateManager?.getSelectedTemplate();
 
-                if (selectedTemplate && selectedTemplate.type === 'custom') {
-                    // Custom template: get file path from backend
-                    const templateService = new TemplateService();
-                    try {
-                        const pathResponse = await templateService.getTemplatePath(selectedTemplate.name);
-                        layout = 'xml';
-                        layoutXmlPath = pathResponse.file_path;
-                    } catch (err) {
-                        window.toast.error(
-                            `Template "${selectedTemplate.name}" not found. Please save your layout first.`,
-                            { title: 'Template Not Found' }
+                    if (decision === 'skip') {
+                        // Filter out files with overwrite conflicts
+                        const conflictVideoPaths = new Set(
+                            preCheck.overwrite_conflicts.map(c => c.video_path)
                         );
-                        return;
+                        files = files.filter(f => !conflictVideoPaths.has(this._resolvePath(f.video_path)));
+
+                        if (files.length === 0) {
+                            window.toast.info('All output files already exist. Nothing to render.', {
+                                title: 'No Files to Process'
+                            });
+                            return;
+                        }
+
+                        window.toast.info(
+                            `Skipping ${preCheck.overwrite_conflicts.length} existing file(s)`,
+                            { title: 'Files Skipped', duration: 3000 }
+                        );
                     }
-                } else if (selectedTemplate && selectedTemplate.type === 'predefined') {
-                    layout = selectedTemplate.name;
-                } else {
-                    window.toast.error(
-                        'Please select a template first.',
-                        { title: 'No Template Selected' }
-                    );
-                    return;
                 }
-            }
 
-            const request = {
-                files: files,
-                layout: layout,
-                layout_xml_path: layoutXmlPath,
-                units_speed: this.state.quickConfig?.unitsSpeed || 'kph',
-                units_altitude: this.state.quickConfig?.unitsAltitude || 'metre',
-                units_distance: this.state.quickConfig?.unitsDistance || 'km',
-                units_temperature: this.state.quickConfig?.unitsTemperature || 'degC',
-                map_style: this.state.quickConfig?.mapStyle || 'osm',
-                gpx_merge_mode: this.state.quickConfig?.gpxMergeMode || 'OVERWRITE',
-                video_time_alignment: this.state.quickConfig?.videoTimeAlignment || null,
-                ffmpeg_profile: this.state.quickConfig?.ffmpegProfile || null,
-                gps_dop_max: this.state.quickConfig?.gpsDopMax || 20,
-                gps_speed_max: this.state.quickConfig?.gpsSpeedMax || 200,
-            };
-
-            this.startBtn.disabled = true;
-            this.startBtn.textContent = 'Starting...';
-
-            const response = await fetch('/api/render/batch', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(request),
-            });
-
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.detail || 'Failed to start batch render');
-            }
-
-            const data = await response.json();
-            this.batchId = data.batch_id;
-            this.jobIds = data.job_ids;
-
-            // Show warning for skipped files
-            if (data.skipped_files && data.skipped_files.length > 0) {
-                window.toast.warning(
-                    `${data.skipped_files.length} file(s) skipped: ${data.skipped_files.join(', ')}`,
-                    { title: 'Some Files Skipped', duration: 5000 }
+                // 2. Show GPS quality table
+                // Filter GPS files to only include files still in the list
+                const remainingVideoPaths = new Set(files.map(f => this._resolvePath(f.video_path)));
+                const remainingGpsFiles = (preCheck.gps_files || []).filter(
+                    file => remainingVideoPaths.has(file.video_path)
                 );
+
+                // Count issues in remaining files
+                const remainingIssuesCount = remainingGpsFiles.filter(
+                    f => ['poor', 'no_signal'].includes(f.quality_score)
+                ).length;
+
+                // Always show GPS quality dialog
+                if (remainingGpsFiles.length > 0) {
+                    let decision;
+
+                    if (window.gpsBatchWarningDialog) {
+                        decision = await window.gpsBatchWarningDialog.show(
+                            remainingGpsFiles,
+                            { issuesCount: remainingIssuesCount }
+                        );
+                    } else {
+                        // Fallback to browser confirm
+                        if (remainingIssuesCount > 0) {
+                            const issueFiles = remainingGpsFiles
+                                .filter(f => ['poor', 'no_signal'].includes(f.quality_score))
+                                .slice(0, 5)
+                                .map(i => i.video_path.split('/').pop())
+                                .join('\n');
+                            decision = confirm(
+                                `${remainingIssuesCount} file(s) have poor GPS:\n${issueFiles}\n\nRender anyway?`
+                            ) ? 'render_all' : null;
+                        } else {
+                            decision = 'render_all';
+                        }
+                    }
+
+                    if (decision === null) {
+                        // User cancelled
+                        return;
+                    }
+
+                    if (decision === 'skip') {
+                        // Filter out files with GPS issues
+                        const issueVideoPaths = new Set(
+                            remainingGpsFiles
+                                .filter(f => ['poor', 'no_signal'].includes(f.quality_score))
+                                .map(f => f.video_path)
+                        );
+                        files = files.filter(f => !issueVideoPaths.has(this._resolvePath(f.video_path)));
+
+                        if (files.length === 0) {
+                            window.toast.info('No files remaining to render.', {
+                                title: 'All Files Skipped'
+                            });
+                            return;
+                        }
+
+                        window.toast.info(
+                            `Skipping ${remainingIssuesCount} file(s) with poor GPS`,
+                            { title: 'Files Skipped', duration: 3000 }
+                        );
+                    }
+                    // If 'render_all', continue with all files
+                }
             }
 
-            window.toast.success(
-                `Batch render started: ${data.total_jobs} jobs queued`,
-                { title: 'Batch Started', duration: 3000 }
-            );
-
-            // Switch to progress view
-            this._showProgressView();
-            this._startPolling();
+            // 3. Execute batch render with remaining files
+            await this._executeBatchRender(files);
 
         } catch (error) {
             console.error('Batch render failed:', error);
@@ -390,7 +439,131 @@ class BatchRenderModal {
         } finally {
             this.startBtn.disabled = false;
             this.startBtn.textContent = 'Start Batch Render';
+            this.analyzingEl.style.display = 'none';
         }
+    }
+
+    /**
+     * Resolve path to absolute form (approximation for comparison)
+     * Note: Backend returns resolved paths, frontend paths may not be resolved
+     */
+    _resolvePath(path) {
+        // Remove quotes and normalize
+        let cleaned = this._cleanPath(path);
+        // Expand ~ to absolute (best effort, actual expansion done by backend)
+        if (cleaned.startsWith('~')) {
+            // We can't know the actual home dir, but backend will resolve it
+            // For comparison purposes, we'll keep it as-is
+        }
+        return cleaned;
+    }
+
+    /**
+     * Call pre-check API to get overwrite conflicts and GPS issues
+     */
+    async _preCheckFiles(files) {
+        const response = await fetch('/api/render/pre-check', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ files: files })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Pre-check failed');
+        }
+
+        return await response.json();
+    }
+
+    /**
+     * Execute batch render with the given files
+     */
+    async _executeBatchRender(files) {
+        let layout = 'default';
+        let layoutXmlPath = null;
+
+        // Get layout based on current mode
+        if (this.state.mode === 'quick') {
+            // Quick mode: use quickConfig.layout
+            const layoutName = this.state.quickConfig?.layout || 'default-1920x1080';
+
+            if (!this._isPredefinedLayout(layoutName)) {
+                // Custom template in quick mode
+                const templateService = new TemplateService();
+                const pathResponse = await templateService.getTemplatePath(layoutName);
+                layout = 'xml';
+                layoutXmlPath = pathResponse.file_path;
+            } else {
+                layout = layoutName;
+            }
+        } else {
+            // Advanced mode: get from TemplateManager
+            const templateManager = window.app?.modeToggle?.templateManager;
+            const selectedTemplate = templateManager?.getSelectedTemplate();
+
+            if (selectedTemplate && selectedTemplate.type === 'custom') {
+                // Custom template: get file path from backend
+                const templateService = new TemplateService();
+                const pathResponse = await templateService.getTemplatePath(selectedTemplate.name);
+                layout = 'xml';
+                layoutXmlPath = pathResponse.file_path;
+            } else if (selectedTemplate && selectedTemplate.type === 'predefined') {
+                layout = selectedTemplate.name;
+            } else {
+                throw new Error('Please select a template first.');
+            }
+        }
+
+        const request = {
+            files: files,
+            layout: layout,
+            layout_xml_path: layoutXmlPath,
+            units_speed: this.state.quickConfig?.unitsSpeed || 'kph',
+            units_altitude: this.state.quickConfig?.unitsAltitude || 'metre',
+            units_distance: this.state.quickConfig?.unitsDistance || 'km',
+            units_temperature: this.state.quickConfig?.unitsTemperature || 'degC',
+            map_style: this.state.quickConfig?.mapStyle || 'osm',
+            gpx_merge_mode: this.state.quickConfig?.gpxMergeMode || 'OVERWRITE',
+            video_time_alignment: this.state.quickConfig?.videoTimeAlignment || null,
+            ffmpeg_profile: this.state.quickConfig?.ffmpegProfile || null,
+            gps_dop_max: this.state.quickConfig?.gpsDopMax || 20,
+            gps_speed_max: this.state.quickConfig?.gpsSpeedMax || 200,
+        };
+
+        this.startBtn.textContent = 'Starting...';
+
+        const response = await fetch('/api/render/batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(request),
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to start batch render');
+        }
+
+        const data = await response.json();
+        this.batchId = data.batch_id;
+        this.jobIds = data.job_ids;
+
+        // Show warning for skipped files
+        if (data.skipped_files && data.skipped_files.length > 0) {
+            window.toast.warning(
+                `${data.skipped_files.length} file(s) skipped: ${data.skipped_files.join(', ')}`,
+                { title: 'Some Files Skipped', duration: 5000 }
+            );
+        }
+
+        window.toast.success(
+            `Batch render started: ${data.total_jobs} jobs queued`,
+            { title: 'Batch Started', duration: 3000 }
+        );
+
+        // Switch to progress view
+        this._showProgressView();
+        this._startPolling();
     }
 
     _showProgressView() {

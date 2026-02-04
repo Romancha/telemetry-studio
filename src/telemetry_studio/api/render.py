@@ -95,6 +95,171 @@ class CurrentJobResponse(BaseModel):
     progress: JobProgressResponse | None = None
 
 
+class FileCheckRequest(BaseModel):
+    """Request to check if output files exist."""
+
+    output_files: list[str] = Field(min_length=1, max_length=100)
+
+
+class FileCheckResponse(BaseModel):
+    """Response with list of existing files."""
+
+    existing_files: list[str]
+    total_checked: int
+
+
+# --- Pre-check for batch render (overwrite + GPS quality) ---
+
+
+class PreCheckFileInput(BaseModel):
+    """Input file for pre-check."""
+
+    video_path: str
+    gpx_path: str | None = None
+
+
+class PreCheckRequest(BaseModel):
+    """Request to pre-check files before batch render."""
+
+    files: list[PreCheckFileInput] = Field(min_length=1, max_length=100)
+
+
+class OverwriteConflict(BaseModel):
+    """File with overwrite conflict."""
+
+    video_path: str
+    output_path: str
+
+
+class GPSFileInfo(BaseModel):
+    """GPS quality info for a file."""
+
+    video_path: str
+    quality_score: str  # excellent, good, ok, poor, no_signal, skipped, not_found
+    usable_percentage: float | None = None
+    dop_mean: float | None = None
+    has_external_gps: bool = False  # True if GPX/FIT provided
+
+
+class PreCheckResponse(BaseModel):
+    """Response from pre-check with overwrite and GPS issues."""
+
+    total_files: int
+    overwrite_conflicts: list[OverwriteConflict]
+    gps_files: list[GPSFileInfo]  # All files with GPS info
+    gps_issues_count: int  # Count of poor/no_signal files
+
+
+@router.post("/render/pre-check", response_model=PreCheckResponse)
+async def pre_check_batch_files(request: PreCheckRequest) -> PreCheckResponse:
+    """Pre-check batch files for overwrite conflicts and GPS quality issues.
+
+    Returns info for all files so the frontend can show a complete table.
+    """
+    from telemetry_studio.services.gps_analyzer import analyze_gps_quality
+
+    overwrite_conflicts: list[OverwriteConflict] = []
+    gps_files: list[GPSFileInfo] = []
+    gps_issues_count = 0
+
+    for file_input in request.files:
+        video_path = Path(file_input.video_path).expanduser().resolve()
+
+        # Handle non-existent files
+        if not video_path.exists():
+            gps_files.append(
+                GPSFileInfo(
+                    video_path=str(video_path),
+                    quality_score="not_found",
+                )
+            )
+            continue
+
+        # Check overwrite conflict
+        output_path = video_path.parent / f"{video_path.stem}_overlay.mp4"
+        if output_path.exists():
+            overwrite_conflicts.append(
+                OverwriteConflict(
+                    video_path=str(video_path),
+                    output_path=str(output_path),
+                )
+            )
+
+        # Analyze GPS quality
+        suffix = video_path.suffix.lower()
+        if suffix in [".mp4", ".mov", ".avi"]:
+            # If external GPX/FIT provided, mark as skipped
+            if file_input.gpx_path:
+                gps_files.append(
+                    GPSFileInfo(
+                        video_path=str(video_path),
+                        quality_score="skipped",
+                        has_external_gps=True,
+                    )
+                )
+            else:
+                try:
+                    report = analyze_gps_quality(video_path)
+                    if report:
+                        gps_files.append(
+                            GPSFileInfo(
+                                video_path=str(video_path),
+                                quality_score=report.quality_score,
+                                usable_percentage=report.usable_percentage,
+                                dop_mean=report.dop_mean,
+                            )
+                        )
+                        if report.quality_score in ["poor", "no_signal"]:
+                            gps_issues_count += 1
+                    else:
+                        gps_files.append(
+                            GPSFileInfo(
+                                video_path=str(video_path),
+                                quality_score="unknown",
+                            )
+                        )
+                except Exception as e:
+                    logger.warning(f"Failed to analyze GPS for {video_path}: {e}")
+                    gps_files.append(
+                        GPSFileInfo(
+                            video_path=str(video_path),
+                            quality_score="error",
+                        )
+                    )
+        else:
+            # Non-video files (GPX, FIT) - skip GPS analysis
+            gps_files.append(
+                GPSFileInfo(
+                    video_path=str(video_path),
+                    quality_score="skipped",
+                )
+            )
+
+    return PreCheckResponse(
+        total_files=len(request.files),
+        overwrite_conflicts=overwrite_conflicts,
+        gps_files=gps_files,
+        gps_issues_count=gps_issues_count,
+    )
+
+
+@router.post("/render/check-files", response_model=FileCheckResponse)
+async def check_output_files(request: FileCheckRequest) -> FileCheckResponse:
+    """Check which output files already exist on filesystem."""
+    existing = []
+    for file_path in request.output_files:
+        try:
+            # Resolve and sanitize path
+            resolved_path = Path(file_path).expanduser().resolve()
+            if resolved_path.exists() and resolved_path.is_file():
+                existing.append(str(resolved_path))
+        except (ValueError, OSError) as e:
+            logger.warning(f"Invalid path in check-files: {file_path}, error: {e}")
+            continue
+
+    return FileCheckResponse(existing_files=existing, total_checked=len(request.output_files))
+
+
 @router.post("/render/start", response_model=RenderJobResponse)
 async def start_render(request: RenderJobRequest, background_tasks: BackgroundTasks) -> RenderJobResponse:
     """Start a new render job."""

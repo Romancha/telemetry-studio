@@ -133,6 +133,17 @@ class RenderModal {
 
     async startRender(config) {
         try {
+            // Check GPS quality and warn if poor
+            const primaryFile = this.state.getPrimaryFile?.();
+            const gpsQuality = primaryFile?.gps_quality;
+
+            if (GPSWarningModal.shouldWarn(gpsQuality)) {
+                const proceed = await window.gpsWarningModal.show(gpsQuality);
+                if (!proceed) {
+                    return; // User cancelled
+                }
+            }
+
             // Build request from state and config
             const request = {
                 session_id: this.state.sessionId,
@@ -150,6 +161,56 @@ class RenderModal {
                 gps_dop_max: this.state.quickConfig.gpsDopMax || 20,
                 gps_speed_max: this.state.quickConfig.gpsSpeedMax || 200
             };
+
+            // Determine output file path for checking
+            let outputFile = request.output_file;
+            if (!outputFile) {
+                const primary = this.state.getPrimaryFile?.() || this.state.files?.find(f => f.role === 'PRIMARY');
+                if (primary && primary.file_path) {
+                    const lastSlash = primary.file_path.lastIndexOf('/');
+                    const dir = lastSlash > -1 ? primary.file_path.substring(0, lastSlash) : '.';
+                    const filename = primary.filename || primary.file_path.substring(lastSlash + 1);
+                    const lastDot = filename.lastIndexOf('.');
+                    const name = lastDot > -1 ? filename.substring(0, lastDot) : filename;
+                    outputFile = `${dir}/${name}_overlay.mp4`;
+                }
+            }
+
+            // Check if output file exists
+            if (outputFile) {
+                try {
+                    const checkResponse = await fetch('/api/render/check-files', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ output_files: [outputFile] })
+                    });
+
+                    if (checkResponse.ok) {
+                        const checkData = await checkResponse.json();
+                        if (checkData.existing_files && checkData.existing_files.length > 0) {
+                            // File exists - show confirmation (no Skip for single file)
+                            let decision;
+                            if (window.overwriteConfirmDialog) {
+                                decision = await window.overwriteConfirmDialog.show(
+                                    checkData.existing_files,
+                                    { showSkip: false }
+                                );
+                            } else {
+                                // Fallback to browser confirm
+                                decision = confirm(`File already exists:\n${checkData.existing_files[0]}\n\nOverwrite?`)
+                                    ? 'overwrite' : null;
+                            }
+
+                            if (decision !== 'overwrite') {
+                                // User cancelled
+                                return;
+                            }
+                        }
+                    }
+                } catch (checkError) {
+                    console.warn('File check failed, proceeding anyway:', checkError);
+                }
+            }
 
             const response = await fetch('/api/render/start', {
                 method: 'POST',

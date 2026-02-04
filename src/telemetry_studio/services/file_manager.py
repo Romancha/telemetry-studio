@@ -7,7 +7,13 @@ import uuid
 from pathlib import Path
 
 from telemetry_studio.config import settings
-from telemetry_studio.models.schemas import FileInfo, FileRole, GpxFitMetadata, VideoMetadata
+from telemetry_studio.models.schemas import (
+    FileInfo,
+    FileRole,
+    GPSQualityReport,
+    GpxFitMetadata,
+    VideoMetadata,
+)
 
 
 class FileManager:
@@ -73,6 +79,7 @@ class FileManager:
         role: FileRole,
         video_metadata: VideoMetadata | None = None,
         gpx_fit_metadata: GpxFitMetadata | None = None,
+        gps_quality: GPSQualityReport | None = None,
     ) -> FileInfo:
         """Add a file to the session with specified role.
 
@@ -104,6 +111,7 @@ class FileManager:
             role=role,
             video_metadata=video_metadata,
             gpx_fit_metadata=gpx_fit_metadata,
+            gps_quality=gps_quality,
         )
 
         files.append(file_info)

@@ -24,6 +24,7 @@
                             <span class="file-fps"></span>
                             <span class="file-duration"></span>
                             <span class="file-gps gps-badge"></span>
+                            <span id="gps-indicator-container"></span>
                         </div>
                     </div>
                 </div>
@@ -51,6 +52,8 @@
                     <div id="file-uploader-container">
                         <!-- FileUploader renders here -->
                     </div>
+                    <!-- GPS Quality Card -->
+                    <div id="gps-quality-container"></div>
                     <!-- GPX/FIT Options (shown when merge/gpx-only mode) -->
                     <div id="gpx-options-container"></div>
                 </div>
@@ -241,8 +244,8 @@
                     <div class="config-row">
                         <div class="config-group">
                             <label>GPS DOP Max</label>
-                            <input type="number" id="gps-dop-max" min="1" max="100" step="1" value="20">
-                            <small class="config-hint">DOP (Dilution of Precision): 1-2 ideal, 2-5 good, 5-10 moderate, 10-20 fair, >20 poor. Points above this value are filtered out</small>
+                            <input type="number" id="gps-dop-max" min="1" max="100" step="1" value="10">
+                            <small class="config-hint">DOP: &lt;2 excellent, 2-5 good, 5-10 ok, &gt;10 poor. Points above are filtered</small>
                         </div>
                         <div class="config-group">
                             <label>GPS Speed Max (km/h)</label>
@@ -325,6 +328,11 @@
     <script src="/static/unified/js/components/TemplateManager.js"></script>
     <script src="/static/unified/js/components/ModeToggle.js"></script>
     <script src="/static/unified/js/components/GpxOptionsPanel.js"></script>
+    <script src="/static/unified/js/components/OverwriteConfirmDialog.js"></script>
+    <script src="/static/unified/js/components/GPSQualityCard.js"></script>
+    <script src="/static/unified/js/components/GPSQualityIndicator.js"></script>
+    <script src="/static/unified/js/components/GPSWarningModal.js"></script>
+    <script src="/static/unified/js/components/GPSBatchWarningDialog.js"></script>
     <script src="/static/unified/js/components/RenderModal.js"></script>
     <script src="/static/unified/js/components/BatchRenderModal.js"></script>
     <script src="/static/unified/js/components/Toast.js"></script>
