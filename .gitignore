@@ -87,3 +87,5 @@ temp/
 
 .playwright-mcp
 /tests/fixtures/videos/*_overlay.*
+# Design documents
+docs/plans/
