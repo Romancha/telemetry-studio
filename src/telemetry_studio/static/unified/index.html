@@ -235,6 +235,21 @@
                         <select id="ffmpeg-profile"></select>
                         <small class="config-hint" id="ffmpeg-profile-hint"></small>
                     </div>
+                    <div class="config-group">
+                        <small class="config-hint" style="margin-bottom: 8px; display: block;">GPS filters remove bad data points (jumps, glitches)</small>
+                    </div>
+                    <div class="config-row">
+                        <div class="config-group">
+                            <label>GPS DOP Max</label>
+                            <input type="number" id="gps-dop-max" min="1" max="100" step="1" value="20">
+                            <small class="config-hint">DOP (Dilution of Precision): 1-2 ideal, 2-5 good, 5-10 moderate, 10-20 fair, >20 poor. Points above this value are filtered out</small>
+                        </div>
+                        <div class="config-group">
+                            <label>GPS Speed Max (km/h)</label>
+                            <input type="number" id="gps-speed-max" min="10" max="500" step="10" value="200">
+                            <small class="config-hint">Filter unrealistic speed spikes</small>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Properties Tab (Advanced mode) -->

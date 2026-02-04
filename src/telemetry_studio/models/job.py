@@ -6,6 +6,8 @@ from enum import Enum
 from pydantic import BaseModel, Field
 
 from telemetry_studio.constants import (
+    DEFAULT_GPS_DOP_MAX,
+    DEFAULT_GPS_SPEED_MAX,
     DEFAULT_GPX_MERGE_MODE,
     DEFAULT_UNITS_ALTITUDE,
     DEFAULT_UNITS_DISTANCE,
@@ -45,6 +47,8 @@ class RenderJobConfig(BaseModel):
     gpx_merge_mode: str = DEFAULT_GPX_MERGE_MODE
     video_time_alignment: str | None = None
     ffmpeg_profile: str | None = None  # FFmpeg encoding profile name
+    gps_dop_max: float = DEFAULT_GPS_DOP_MAX
+    gps_speed_max: float = DEFAULT_GPS_SPEED_MAX
 
 
 class JobProgress(BaseModel):

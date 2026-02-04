@@ -5,6 +5,8 @@ from enum import Enum
 from pydantic import BaseModel, Field
 
 from telemetry_studio.constants import (
+    DEFAULT_GPS_DOP_MAX,
+    DEFAULT_GPS_SPEED_MAX,
     DEFAULT_UNITS_ALTITUDE,
     DEFAULT_UNITS_DISTANCE,
     DEFAULT_UNITS_SPEED,
@@ -139,6 +141,8 @@ class PreviewRequest(BaseModel):
     units_distance: str = DEFAULT_UNITS_DISTANCE
     units_temperature: str = DEFAULT_UNITS_TEMPERATURE
     map_style: str | None = None
+    gps_dop_max: float = DEFAULT_GPS_DOP_MAX
+    gps_speed_max: float = DEFAULT_GPS_SPEED_MAX
 
 
 class PreviewResponse(BaseModel):

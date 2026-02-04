@@ -14,6 +14,8 @@ from PIL import Image, ImageFont
 
 from telemetry_studio.config import settings
 from telemetry_studio.constants import (
+    DEFAULT_GPS_DOP_MAX,
+    DEFAULT_GPS_SPEED_MAX,
     DEFAULT_UNITS_ALTITUDE,
     DEFAULT_UNITS_DISTANCE,
     DEFAULT_UNITS_SPEED,
@@ -265,6 +267,8 @@ def render_preview(
     units_distance: str = DEFAULT_UNITS_DISTANCE,
     units_temperature: str = DEFAULT_UNITS_TEMPERATURE,
     map_style: str | None = None,
+    gps_dop_max: float = DEFAULT_GPS_DOP_MAX,
+    gps_speed_max: float = DEFAULT_GPS_SPEED_MAX,
 ) -> tuple[bytes, int, int]:
     """Render a preview image for the given file and settings.
 
@@ -274,6 +278,7 @@ def render_preview(
     from gopro_overlay.ffmpeg_gopro import FFMPEGGoPro
     from gopro_overlay.framemeta_gpx import timeseries_to_framemeta
     from gopro_overlay.geo import MapRenderer, MapStyler
+    from gopro_overlay.gpmd_filters import standard as gps_filter_standard
     from gopro_overlay.layout import Overlay
     from gopro_overlay.layout_xml import Converters, layout_from_xml, load_xml_layout
     from gopro_overlay.loading import GoproLoader, load_external
@@ -343,7 +348,14 @@ def render_preview(
             # Load GoPro video
             ffmpeg = FFMPEG()
             ffmpeg_gopro = FFMPEGGoPro(ffmpeg)
-            loader = GoproLoader(ffmpeg_gopro, units)
+
+            # Create GPS filter with configured thresholds
+            gps_filter = gps_filter_standard(
+                dop_max=gps_dop_max,
+                speed_max=units.Quantity(gps_speed_max, units.kph),
+            )
+
+            loader = GoproLoader(ffmpeg_gopro, units, gps_lock_filter=gps_filter)
 
             try:
                 gopro = loader.load(file_path)
@@ -396,6 +408,8 @@ async def render_preview_from_layout(
     units_distance: str = DEFAULT_UNITS_DISTANCE,
     units_temperature: str = DEFAULT_UNITS_TEMPERATURE,
     map_style: str | None = None,
+    gps_dop_max: float = DEFAULT_GPS_DOP_MAX,
+    gps_speed_max: float = DEFAULT_GPS_SPEED_MAX,
 ) -> dict:
     """
     Render preview from an editor layout.
@@ -438,6 +452,8 @@ async def render_preview_from_layout(
                 units_distance,
                 units_temperature,
                 map_style,
+                gps_dop_max,
+                gps_speed_max,
             ),
         )
         return {
@@ -469,12 +485,15 @@ def _render_layout_with_data(
     units_distance: str = DEFAULT_UNITS_DISTANCE,
     units_temperature: str = DEFAULT_UNITS_TEMPERATURE,
     map_style: str | None = None,
+    gps_dop_max: float = DEFAULT_GPS_DOP_MAX,
+    gps_speed_max: float = DEFAULT_GPS_SPEED_MAX,
 ) -> tuple[bytes, int, int]:
     """Render layout XML with actual data from file."""
     from gopro_overlay.ffmpeg import FFMPEG
     from gopro_overlay.ffmpeg_gopro import FFMPEGGoPro
     from gopro_overlay.framemeta_gpx import timeseries_to_framemeta
     from gopro_overlay.geo import MapRenderer, MapStyler
+    from gopro_overlay.gpmd_filters import standard as gps_filter_standard
     from gopro_overlay.layout import Overlay
     from gopro_overlay.layout_xml import Converters, layout_from_xml
     from gopro_overlay.loading import GoproLoader, load_external
@@ -524,7 +543,14 @@ def _render_layout_with_data(
         if suffix == ".mp4":
             ffmpeg = FFMPEG()
             ffmpeg_gopro = FFMPEGGoPro(ffmpeg)
-            loader = GoproLoader(ffmpeg_gopro, units)
+
+            # Create GPS filter with configured thresholds
+            gps_filter = gps_filter_standard(
+                dop_max=gps_dop_max,
+                speed_max=units.Quantity(gps_speed_max, units.kph),
+            )
+
+            loader = GoproLoader(ffmpeg_gopro, units, gps_lock_filter=gps_filter)
             try:
                 gopro = loader.load(file_path)
                 framemeta = gopro.framemeta
@@ -604,6 +630,8 @@ def generate_cli_command(
     gpx_merge_mode: str = "OVERWRITE",
     video_time_alignment: str | None = None,
     ffmpeg_profile: str | None = None,
+    gps_dop_max: float = DEFAULT_GPS_DOP_MAX,
+    gps_speed_max: float = DEFAULT_GPS_SPEED_MAX,
 ) -> str:
     """Generate the CLI command for full video processing.
 
@@ -714,5 +742,11 @@ def generate_cli_command(
     # Add FFmpeg profile if specified
     if ffmpeg_profile:
         cmd_parts.append(f"--profile {shlex.quote(ffmpeg_profile)}")
+
+    # Add GPS filter parameters
+    if gps_dop_max is not None:
+        cmd_parts.append(f"--gps-dop-max {gps_dop_max}")
+    if gps_speed_max is not None:
+        cmd_parts.append(f"--gps-speed-max {gps_speed_max}")
 
     return " ".join(cmd_parts)

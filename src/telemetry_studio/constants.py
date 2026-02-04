@@ -63,3 +63,13 @@ UNIT_OPTIONS = {
 # =============================================================================
 
 DEFAULT_GPX_MERGE_MODE = "OVERWRITE"
+
+# =============================================================================
+# GPS FILTER DEFAULTS
+# =============================================================================
+# These values are less strict than gopro-dashboard CLI defaults:
+# - CLI default DOP max: 10 (too strict for moving vehicles)
+# - CLI default speed max: 60 kph (too low for motorcycles/cars)
+
+DEFAULT_GPS_DOP_MAX = 20.0  # GPS dilution of precision max (CLI default: 10)
+DEFAULT_GPS_SPEED_MAX = 200.0  # Max speed in kph to filter outliers (CLI default: 60)

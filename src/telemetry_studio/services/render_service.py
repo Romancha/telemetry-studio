@@ -82,6 +82,8 @@ class RenderService:
                 gpx_merge_mode=config.gpx_merge_mode,
                 video_time_alignment=config.video_time_alignment,
                 ffmpeg_profile=config.ffmpeg_profile,
+                gps_dop_max=config.gps_dop_max,
+                gps_speed_max=config.gps_speed_max,
             )
         except Exception as e:
             error_msg = f"Failed to generate command: {e}"

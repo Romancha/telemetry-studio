@@ -33,6 +33,10 @@ class UnifiedApp {
         this.ffmpegProfileSelect = document.getElementById('ffmpeg-profile');
         this.ffmpegProfileHint = document.getElementById('ffmpeg-profile-hint');
 
+        // GPS filter inputs
+        this.gpsDopMaxInput = document.getElementById('gps-dop-max');
+        this.gpsSpeedMaxInput = document.getElementById('gps-speed-max');
+
         // Auto preview checkbox
         this.autoPreviewCheckbox = document.getElementById('auto-preview');
     }
@@ -250,6 +254,30 @@ class UnifiedApp {
             this.state.updateQuickConfig({ ffmpegProfile: newProfile });
             this._updateFfmpegProfileHint(newProfile);
         });
+
+        // GPS DOP Max change
+        if (this.gpsDopMaxInput) {
+            // Initialize from state
+            this.gpsDopMaxInput.value = this.state.quickConfig.gpsDopMax;
+
+            this.gpsDopMaxInput.addEventListener('change', () => {
+                const value = parseFloat(this.gpsDopMaxInput.value) || 20;
+                this.state.updateQuickConfig({ gpsDopMax: value });
+                this._requestPreview();
+            });
+        }
+
+        // GPS Speed Max change
+        if (this.gpsSpeedMaxInput) {
+            // Initialize from state
+            this.gpsSpeedMaxInput.value = this.state.quickConfig.gpsSpeedMax;
+
+            this.gpsSpeedMaxInput.addEventListener('change', () => {
+                const value = parseFloat(this.gpsSpeedMaxInput.value) || 200;
+                this.state.updateQuickConfig({ gpsSpeedMax: value });
+                this._requestPreview();
+            });
+        }
 
         // Auto preview checkbox
         if (this.autoPreviewCheckbox) {
@@ -504,7 +532,9 @@ class UnifiedApp {
                         units_altitude: config.unitsAltitude,
                         units_distance: config.unitsDistance,
                         units_temperature: config.unitsTemperature,
-                        map_style: config.mapStyle
+                        map_style: config.mapStyle,
+                        gps_dop_max: config.gpsDopMax,
+                        gps_speed_max: config.gpsSpeedMax
                     }),
                     signal
                 });
@@ -520,7 +550,9 @@ class UnifiedApp {
                     units_altitude: config.unitsAltitude,
                     units_distance: config.unitsDistance,
                     units_temperature: config.unitsTemperature,
-                    map_style: config.mapStyle
+                    map_style: config.mapStyle,
+                    gps_dop_max: config.gpsDopMax,
+                    gps_speed_max: config.gpsSpeedMax
                 });
                 response = await fetch('/api/editor/preview', {
                     method: 'POST',
@@ -533,7 +565,9 @@ class UnifiedApp {
                         units_altitude: config.unitsAltitude,
                         units_distance: config.unitsDistance,
                         units_temperature: config.unitsTemperature,
-                        map_style: config.mapStyle
+                        map_style: config.mapStyle,
+                        gps_dop_max: config.gpsDopMax,
+                        gps_speed_max: config.gpsSpeedMax
                     }),
                     signal
                 });

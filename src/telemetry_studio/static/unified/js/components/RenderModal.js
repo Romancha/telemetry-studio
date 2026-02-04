@@ -146,7 +146,9 @@ class RenderModal {
                 map_style: this.state.quickConfig.mapStyle || 'osm',
                 gpx_merge_mode: this.state.quickConfig.gpxMergeMode || 'OVERWRITE',
                 video_time_alignment: this.state.quickConfig.videoTimeAlignment || null,
-                ffmpeg_profile: this.state.quickConfig.ffmpegProfile || null
+                ffmpeg_profile: this.state.quickConfig.ffmpegProfile || null,
+                gps_dop_max: this.state.quickConfig.gpsDopMax || 20,
+                gps_speed_max: this.state.quickConfig.gpsSpeedMax || 200
             };
 
             const response = await fetch('/api/render/start', {
@@ -223,7 +225,7 @@ class RenderModal {
     }
 
     async _updateStatus() {
-        if (!this.jobId) return;
+        if (!this.jobId || !this.isOpen) return;
 
         // Skip if previous request is still pending
         if (this._statusRequestPending) return;
@@ -264,7 +266,7 @@ class RenderModal {
     }
 
     async _updateLogs() {
-        if (!this.jobId) return;
+        if (!this.jobId || !this.isOpen) return;
 
         // Skip if previous request is still pending
         if (this._logsRequestPending) return;

@@ -41,6 +41,8 @@ async def generate_preview(request: PreviewRequest) -> PreviewResponse:
                 units_distance=request.units_distance,
                 units_temperature=request.units_temperature,
                 map_style=request.map_style,
+                gps_dop_max=request.gps_dop_max,
+                gps_speed_max=request.gps_speed_max,
             ),
         )
 

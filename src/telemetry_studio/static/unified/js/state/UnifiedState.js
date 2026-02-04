@@ -33,7 +33,10 @@ class UnifiedState {
             gpxMergeMode: 'OVERWRITE',
             videoTimeAlignment: null,
             // FFmpeg profile (empty = default)
-            ffmpegProfile: ''
+            ffmpegProfile: '',
+            // GPS filter settings (less strict than CLI defaults)
+            gpsDopMax: 20,      // CLI default: 10
+            gpsSpeedMax: 200    // CLI default: 60 kph
         };
 
         // Preview state
@@ -276,7 +279,10 @@ class UnifiedState {
             unitsAltitude: this.quickConfig.unitsAltitude,
             unitsDistance: this.quickConfig.unitsDistance,
             unitsTemperature: this.quickConfig.unitsTemperature,
-            mapStyle: this.quickConfig.mapStyle
+            mapStyle: this.quickConfig.mapStyle,
+            // GPS filter settings
+            gpsDopMax: this.quickConfig.gpsDopMax,
+            gpsSpeedMax: this.quickConfig.gpsSpeedMax
         };
 
         if (this.mode === 'quick') {

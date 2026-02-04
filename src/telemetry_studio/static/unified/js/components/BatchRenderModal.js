@@ -248,8 +248,13 @@ class BatchRenderModal {
         for (const line of lines) {
             // Split by comma, but handle paths that might have spaces
             const parts = line.split(',').map(p => p.trim());
+            const videoPath = this._cleanPath(parts[0]);
+
+            // Skip empty paths (e.g., lines with only whitespace or quotes)
+            if (!videoPath) continue;
+
             files.push({
-                video_path: this._cleanPath(parts[0]),
+                video_path: videoPath,
                 gpx_path: parts[1] ? this._cleanPath(parts[1]) : null,
             });
         }
@@ -340,6 +345,8 @@ class BatchRenderModal {
                 gpx_merge_mode: this.state.quickConfig?.gpxMergeMode || 'OVERWRITE',
                 video_time_alignment: this.state.quickConfig?.videoTimeAlignment || null,
                 ffmpeg_profile: this.state.quickConfig?.ffmpegProfile || null,
+                gps_dop_max: this.state.quickConfig?.gpsDopMax || 20,
+                gps_speed_max: this.state.quickConfig?.gpsSpeedMax || 200,
             };
 
             this.startBtn.disabled = true;
@@ -422,7 +429,7 @@ class BatchRenderModal {
     }
 
     async _updateStatus() {
-        if (!this.batchId) return;
+        if (!this.batchId || !this.isOpen) return;
 
         // Skip if previous request is still pending
         if (this._statusRequestPending) return;
@@ -469,7 +476,7 @@ class BatchRenderModal {
     }
 
     async _updateLogs() {
-        if (!this.currentJobId) return;
+        if (!this.currentJobId || !this.isOpen) return;
 
         // Skip if previous request is still pending
         if (this._logsRequestPending) return;

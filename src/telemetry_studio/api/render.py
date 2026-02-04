@@ -10,6 +10,8 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, Field
 
 from telemetry_studio.constants import (
+    DEFAULT_GPS_DOP_MAX,
+    DEFAULT_GPS_SPEED_MAX,
     DEFAULT_GPX_MERGE_MODE,
     DEFAULT_UNITS_ALTITUDE,
     DEFAULT_UNITS_DISTANCE,
@@ -42,6 +44,8 @@ class RenderJobRequest(BaseModel):
     gpx_merge_mode: str = DEFAULT_GPX_MERGE_MODE
     video_time_alignment: str | None = None
     ffmpeg_profile: str | None = None  # FFmpeg encoding profile (e.g., "mac", "nvgpu")
+    gps_dop_max: float = DEFAULT_GPS_DOP_MAX
+    gps_speed_max: float = DEFAULT_GPS_SPEED_MAX
 
 
 class RenderJobResponse(BaseModel):
@@ -132,6 +136,8 @@ async def start_render(request: RenderJobRequest, background_tasks: BackgroundTa
         gpx_merge_mode=request.gpx_merge_mode,
         video_time_alignment=request.video_time_alignment,
         ffmpeg_profile=request.ffmpeg_profile,
+        gps_dop_max=request.gps_dop_max,
+        gps_speed_max=request.gps_speed_max,
     )
 
     # Create job
@@ -257,6 +263,8 @@ class BatchRenderRequest(BaseModel):
     gpx_merge_mode: str = DEFAULT_GPX_MERGE_MODE
     video_time_alignment: str | None = None
     ffmpeg_profile: str | None = None
+    gps_dop_max: float = DEFAULT_GPS_DOP_MAX
+    gps_speed_max: float = DEFAULT_GPS_SPEED_MAX
 
 
 class BatchRenderResponse(BaseModel):
@@ -389,6 +397,8 @@ async def start_batch_render(request: BatchRenderRequest, background_tasks: Back
                 gpx_merge_mode=request.gpx_merge_mode,
                 video_time_alignment=request.video_time_alignment,
                 ffmpeg_profile=request.ffmpeg_profile,
+                gps_dop_max=request.gps_dop_max,
+                gps_speed_max=request.gps_speed_max,
             )
 
             # Create job with batch_id
