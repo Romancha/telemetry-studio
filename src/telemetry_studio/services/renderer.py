@@ -237,6 +237,33 @@ def get_available_ffmpeg_profiles() -> list[dict]:
     return result
 
 
+def _fit_video_to_canvas(video_frame: Image.Image, canvas_width: int, canvas_height: int) -> Image.Image:
+    """Fit video frame into canvas preserving aspect ratio (pillarbox/letterbox).
+
+    If video aspect ratio differs from canvas, the video is centered
+    with black bars on sides (pillarbox) or top/bottom (letterbox).
+    """
+    video_w, video_h = video_frame.size
+    if video_w == canvas_width and video_h == canvas_height:
+        return video_frame
+
+    # Calculate scale to fit within canvas
+    scale = min(canvas_width / video_w, canvas_height / video_h)
+    new_w = int(video_w * scale)
+    new_h = int(video_h * scale)
+
+    # Resize video preserving aspect ratio
+    resized = video_frame.resize((new_w, new_h), Image.Resampling.LANCZOS)
+
+    # Create black canvas and paste centered
+    canvas = Image.new("RGBA", (canvas_width, canvas_height), (0, 0, 0, 255))
+    offset_x = (canvas_width - new_w) // 2
+    offset_y = (canvas_height - new_h) // 2
+    canvas.paste(resized, (offset_x, offset_y))
+
+    return canvas
+
+
 def _extract_video_frame(file_path: Path, time_ms: int, width: int, height: int) -> Image.Image | None:
     """Extract a frame from video at specified time."""
     from gopro_overlay.ffmpeg import FFMPEG
@@ -327,7 +354,7 @@ def render_preview(
 
             background = _extract_video_frame(file_path, frame_time_ms, video_width, video_height)
             if background and background.size != (layout_info.width, layout_info.height):
-                background = background.resize((layout_info.width, layout_info.height), Image.Resampling.LANCZOS)
+                background = _fit_video_to_canvas(background, layout_info.width, layout_info.height)
         except Exception as e:
             print(f"Failed to extract video frame for preview: {e}")
 
@@ -541,7 +568,7 @@ def _render_layout_with_data(
 
             background = _extract_video_frame(file_path, frame_time_ms, video_width, video_height)
             if background and background.size != (width, height):
-                background = background.resize((width, height), Image.Resampling.LANCZOS)
+                background = _fit_video_to_canvas(background, width, height)
         except Exception as e:
             print(f"Failed to extract video frame for editor preview: {e}")
 
@@ -692,18 +719,42 @@ def generate_cli_command(
         primary_name = os.path.splitext(os.path.basename(primary_path))[0]
         output_file = os.path.join(primary_dir, f"{primary_name}_overlay.mp4")
 
+    # Get canvas dimensions from layout for overlay-size
+    canvas_width, canvas_height = None, None
+    if primary_type == "video":
+        layout_info = None
+        for info in get_available_layouts():
+            if info.name == layout:
+                layout_info = info
+                break
+        if layout_info is None:
+            layout_info = get_available_layouts()[0]
+        canvas_width, canvas_height = layout_info.width, layout_info.height
+
     # Determine mode and build command
     if secondary and primary_type == "video":
         # Mode 2: Video + GPX/FIT merge
-        cmd_parts = [
-            "gopro-dashboard.py",
-            shlex.quote(primary_path),
-            shlex.quote(output_file),
-            f"--gpx {shlex.quote(secondary.file_path)}",
-            f"--gpx-merge {shlex.quote(gpx_merge_mode)}",
-        ]
+        # Note: --video-time-start only works with --use-gpx-only in gopro-dashboard.
+        # When time alignment is requested, use --use-gpx-only mode instead of --gpx-merge.
         if video_time_alignment:
-            cmd_parts.append(f"--video-time-start {shlex.quote(video_time_alignment)}")
+            cmd_parts = [
+                "gopro-dashboard.py",
+                shlex.quote(primary_path),
+                shlex.quote(output_file),
+                "--use-gpx-only",
+                f"--gpx {shlex.quote(secondary.file_path)}",
+                f"--video-time-start {shlex.quote(video_time_alignment)}",
+            ]
+        else:
+            cmd_parts = [
+                "gopro-dashboard.py",
+                shlex.quote(primary_path),
+                shlex.quote(output_file),
+                f"--gpx {shlex.quote(secondary.file_path)}",
+                f"--gpx-merge {shlex.quote(gpx_merge_mode)}",
+            ]
+        if canvas_width and canvas_height:
+            cmd_parts.append(f"--overlay-size {canvas_width}x{canvas_height}")
     elif primary_type in ("gpx", "fit"):
         # Mode 3: GPX/FIT only (overlay-only mode)
         # Get overlay size from layout
@@ -726,13 +777,14 @@ def generate_cli_command(
             cmd_parts.append(f"--video-time-start {shlex.quote(video_time_alignment)}")
     else:
         # Mode 1: Video only (default - GoPro with embedded GPS)
+        # Note: --video-time-start is not valid without --use-gpx-only
         cmd_parts = [
             "gopro-dashboard.py",
             shlex.quote(primary_path),
             shlex.quote(output_file),
         ]
-        if video_time_alignment:
-            cmd_parts.append(f"--video-time-start {shlex.quote(video_time_alignment)}")
+        if canvas_width and canvas_height:
+            cmd_parts.append(f"--overlay-size {canvas_width}x{canvas_height}")
 
     # Handle layout - either custom XML or predefined
     if layout_xml_path:

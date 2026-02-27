@@ -8,6 +8,7 @@ import re
 import shlex
 import signal
 import sys
+from datetime import UTC
 from pathlib import Path
 
 from telemetry_studio.config import settings
@@ -48,6 +49,154 @@ class RenderService:
             pass  # Process already dead
         except Exception:
             pass
+
+    @staticmethod
+    def _get_gpx_start_timestamp(gpx_path: str) -> float | None:
+        """Extract the first trackpoint timestamp from a GPX file as Unix timestamp."""
+        try:
+            import xml.etree.ElementTree as ET
+
+            tree = ET.parse(gpx_path)
+            root = tree.getroot()
+            # Handle GPX namespace
+            ns = {"gpx": "http://www.topografix.com/GPX/1/1"}
+            # Try with namespace first, then without
+            time_elem = root.find(".//gpx:trkpt/gpx:time", ns)
+            if time_elem is None:
+                time_elem = root.find(".//{http://www.topografix.com/GPX/1/1}trkpt/{http://www.topografix.com/GPX/1/1}time")
+            if time_elem is None:
+                # Try without namespace
+                time_elem = root.find(".//trkpt/time")
+            if time_elem is not None and time_elem.text:
+                from datetime import datetime
+
+                time_str = time_elem.text.strip()
+                # Parse ISO 8601 format (e.g., "2026-01-26T17:36:54.000Z")
+                if time_str.endswith("Z"):
+                    time_str = time_str[:-1] + "+00:00"
+                dt = datetime.fromisoformat(time_str)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=UTC)
+                return dt.timestamp()
+        except Exception as e:
+            logger.warning(f"Failed to parse GPX start time from {gpx_path}: {e}")
+        return None
+
+    def _needs_pillarbox(self, video_path: str, config: RenderJobConfig) -> tuple[int, int, int, int] | None:
+        """Check if video needs pillarboxing to fit the canvas.
+
+        Returns (canvas_w, canvas_h, video_w, video_h) if pillarboxing is needed, None otherwise.
+        """
+        try:
+            from gopro_overlay.ffmpeg import FFMPEG
+            from gopro_overlay.ffmpeg_gopro import FFMPEGGoPro
+
+            from telemetry_studio.services.metadata import get_display_dimensions, get_video_rotation
+            from telemetry_studio.services.renderer import get_available_layouts
+
+            # Get video dimensions
+            ffmpeg = FFMPEG()
+            ffmpeg_gopro = FFMPEGGoPro(ffmpeg)
+            recording = ffmpeg_gopro.find_recording(Path(video_path))
+            rotation = get_video_rotation(Path(video_path))
+            video_w, video_h = get_display_dimensions(
+                recording.video.dimension.x, recording.video.dimension.y, rotation
+            )
+
+            # Get canvas dimensions from layout
+            layout_info = None
+            for info in get_available_layouts():
+                if info.name == config.layout:
+                    layout_info = info
+                    break
+            if layout_info is None:
+                layout_info = get_available_layouts()[0]
+
+            canvas_w, canvas_h = layout_info.width, layout_info.height
+
+            # Check if aspect ratios differ
+            video_aspect = video_w / video_h
+            canvas_aspect = canvas_w / canvas_h
+            if abs(video_aspect - canvas_aspect) < 0.01:
+                return None
+
+            return canvas_w, canvas_h, video_w, video_h
+        except Exception as e:
+            logger.warning(f"Failed to check pillarbox need: {e}")
+            return None
+
+    async def _create_pillarboxed_video(
+        self, video_path: str, canvas_w: int, canvas_h: int, video_w: int, video_h: int, job_id: str
+    ) -> str | None:
+        """Create a temporary pillarboxed version of the video using FFmpeg.
+
+        Returns the path to the temp file, or None if pre-processing failed.
+        """
+        # Calculate scale to fit within canvas preserving aspect ratio
+        scale = min(canvas_w / video_w, canvas_h / video_h)
+        new_w = int(video_w * scale)
+        new_h = int(video_h * scale)
+        # Ensure even dimensions (required by most codecs)
+        new_w = new_w - (new_w % 2)
+        new_h = new_h - (new_h % 2)
+
+        pad_x = (canvas_w - new_w) // 2
+        pad_y = (canvas_h - new_h) // 2
+
+        # Create temp file in the same directory as the video
+        video_dir = os.path.dirname(video_path)
+        video_name = os.path.splitext(os.path.basename(video_path))[0]
+        temp_path = os.path.join(video_dir, f".{video_name}_pillarbox_temp.mp4")
+
+        vf = f"scale={new_w}:{new_h},pad={canvas_w}:{canvas_h}:{pad_x}:{pad_y}"
+
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-i",
+            video_path,
+            "-vf",
+            vf,
+            "-c:a",
+            "copy",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-crf",
+            "18",
+            temp_path,
+        ]
+
+        await job_manager.append_job_log(job_id, "=== Pillarbox Pre-processing ===")
+        await job_manager.append_job_log(job_id, f"Video: {video_w}x{video_h} → Canvas: {canvas_w}x{canvas_h}")
+        await job_manager.append_job_log(job_id, f"FFmpeg filter: {vf}")
+        await job_manager.append_job_log(job_id, f"Running: {shlex.join(cmd)}")
+
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+            stdout, _ = await process.communicate()
+
+            if process.returncode == 0:
+                # Preserve original video's mtime (needed for --video-time-start file-modified)
+                original_stat = os.stat(video_path)
+                os.utime(temp_path, (original_stat.st_atime, original_stat.st_mtime))
+                await job_manager.append_job_log(job_id, "Pillarbox pre-processing completed")
+                return temp_path
+
+            else:
+                output = stdout.decode("utf-8", errors="replace") if stdout else ""
+                await job_manager.append_job_log(job_id, f"Pillarbox pre-processing failed: {output[-500:]}")
+                logger.error(f"FFmpeg pillarbox failed for job {job_id}: {output[-500:]}")
+                return None
+        except Exception as e:
+            await job_manager.append_job_log(job_id, f"Pillarbox pre-processing error: {e}")
+            logger.error(f"FFmpeg pillarbox error for job {job_id}: {e}")
+            return None
 
     async def start_render(self, job_id: str, config: RenderJobConfig):
         """Start rendering process for a job."""
@@ -102,6 +251,38 @@ class RenderService:
             await _clear_current_job()
             return
 
+        # Check if video needs pillarboxing (aspect ratio mismatch with canvas)
+        pillarbox_temp_file = None
+        from telemetry_studio.services.file_manager import file_manager
+
+        primary = file_manager.get_primary_file(config.session_id)
+        if primary and primary.file_type == "video":
+            pillarbox_info = self._needs_pillarbox(primary.file_path, config)
+            if pillarbox_info:
+                canvas_w, canvas_h, video_w, video_h = pillarbox_info
+                await job_manager.update_job_status(job_id, JobStatus.RUNNING)
+                pillarbox_temp_file = await self._create_pillarboxed_video(
+                    primary.file_path, canvas_w, canvas_h, video_w, video_h, job_id
+                )
+                if pillarbox_temp_file:
+                    # When using file-modified time alignment with external GPX,
+                    # set pillarbox file's mtime to GPX first trackpoint time.
+                    # The original video's mtime often doesn't match GPX recording time.
+                    if config.video_time_alignment == "file-modified":
+                        secondary = file_manager.get_secondary_file(config.session_id)
+                        if secondary and secondary.file_type in ("gpx", "fit"):
+                            gpx_start_ts = self._get_gpx_start_timestamp(secondary.file_path)
+                            if gpx_start_ts:
+                                os.utime(pillarbox_temp_file, (gpx_start_ts, gpx_start_ts))
+                                await job_manager.append_job_log(
+                                    job_id,
+                                    "Set pillarbox file mtime to GPX start time",
+                                )
+                    # Replace video path in command with pillarboxed version
+                    command = command.replace(
+                        shlex.quote(primary.file_path), shlex.quote(pillarbox_temp_file)
+                    )
+
         # Parse command into args
         try:
             args = shlex.split(command)
@@ -109,6 +290,8 @@ class RenderService:
             args[0] = str(gopro_dashboard)
         except Exception as e:
             await job_manager.update_job_status(job_id, JobStatus.FAILED, f"Failed to parse command: {e}")
+            if pillarbox_temp_file:
+                self._cleanup_temp_file(pillarbox_temp_file)
             await _clear_current_job()
             return
 
@@ -168,6 +351,9 @@ class RenderService:
             await job_manager.update_job_status(job_id, JobStatus.FAILED, str(e))
             logger.exception(f"Job {job_id} failed with exception")
         finally:
+            # Clean up pillarbox temp file if created
+            if pillarbox_temp_file:
+                self._cleanup_temp_file(pillarbox_temp_file)
             async with self._lock:
                 self._process = None
                 self._current_job_id = None
@@ -336,6 +522,16 @@ class RenderService:
         except Exception:
             logger.exception(f"Error cancelling job {job_id}")
             return False
+
+    @staticmethod
+    def _cleanup_temp_file(temp_path: str):
+        """Remove temporary pillarbox file."""
+        try:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+                logger.info(f"Cleaned up temp file: {temp_path}")
+        except Exception as e:
+            logger.warning(f"Failed to clean up temp file {temp_path}: {e}")
 
     def _find_gopro_dashboard(self) -> Path | None:
         """Locate gopro-dashboard.py script or wrapper.
