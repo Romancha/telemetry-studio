@@ -66,11 +66,20 @@ async def use_local_file(request: LocalFileRequest) -> UploadResponse:
             detail=f"File type not allowed. Allowed: {', '.join(settings.allowed_extensions)}",
         )
 
-    # Create local session
-    session_id = file_manager.create_local_session()
-
     # Determine file type and extract metadata
     file_type = get_file_type(file_path)
+
+    # Check if we should reuse an existing session with GPX/FIT primary
+    reuse_session = False
+    session_id = request.session_id
+    if session_id and file_manager.session_exists(session_id):
+        existing_primary = file_manager.get_primary_file(session_id)
+        if existing_primary and existing_primary.file_type in ("gpx", "fit") and file_type == "video":
+            reuse_session = True
+
+    if not reuse_session:
+        session_id = file_manager.create_local_session()
+
     video_metadata = None
     gpx_fit_metadata = None
     gps_quality = None
@@ -80,7 +89,8 @@ async def use_local_file(request: LocalFileRequest) -> UploadResponse:
             video_metadata = extract_video_metadata(file_path)
         except Exception as e:
             logger.error(f"Failed to extract video metadata: {e}")
-            file_manager.cleanup_session(session_id)
+            if not reuse_session:
+                file_manager.cleanup_session(session_id)
             raise HTTPException(
                 status_code=400,
                 detail="Could not read video file. Ensure it's a valid video format.",
@@ -99,11 +109,31 @@ async def use_local_file(request: LocalFileRequest) -> UploadResponse:
             gpx_fit_metadata = extract_gpx_fit_metadata(file_path)
         except Exception as e:
             logger.error(f"Failed to extract GPX/FIT metadata: {e}")
-            file_manager.cleanup_session(session_id)
+            if not reuse_session:
+                file_manager.cleanup_session(session_id)
             raise HTTPException(
                 status_code=400,
                 detail=f"Could not read {file_type.upper()} file. Ensure it's a valid format.",
             ) from e
+
+    # If reusing session, promote video to primary (demote GPX/FIT to secondary)
+    if reuse_session:
+        try:
+            files = file_manager.promote_to_primary(
+                session_id=session_id,
+                filename=file_path.name,
+                file_path=file_path,
+                file_type=file_type,
+                video_metadata=video_metadata,
+                gps_quality=gps_quality,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+
+        return UploadResponse(
+            session_id=session_id,
+            files=files,
+        )
 
     # Add file to session as primary
     file_info = file_manager.add_file(
@@ -192,8 +222,15 @@ async def use_local_secondary_file(request: SecondaryFileRequest) -> UploadRespo
 
 
 @router.post("/upload", response_model=UploadResponse)
-async def upload_file(file: Annotated[UploadFile, File(...)]) -> UploadResponse:
-    """Upload a GoPro MP4, GPX, or FIT file as primary."""
+async def upload_file(
+    file: Annotated[UploadFile, File(...)],
+    session_id: Annotated[str | None, Form()] = None,
+) -> UploadResponse:
+    """Upload a GoPro MP4, GPX, or FIT file as primary.
+
+    If session_id is provided and the session has a GPX/FIT as primary,
+    the video will be promoted to primary and the GPX/FIT demoted to secondary.
+    """
     if not file.filename:
         raise HTTPException(status_code=400, detail="No filename provided")
 
@@ -215,9 +252,21 @@ async def upload_file(file: Annotated[UploadFile, File(...)]) -> UploadResponse:
             detail=f"File too large. Maximum size: {settings.max_upload_size_bytes / (1024 * 1024 * 1024):.1f}GB",
         )
 
-    # Create session and save file
-    session_id = file_manager.create_session()
-    file_path = file_manager.save_file(session_id, file.filename, content)
+    # Check if we should reuse an existing session with GPX/FIT primary
+    reuse_session = False
+    if session_id and file_manager.session_exists(session_id):
+        existing_primary = file_manager.get_primary_file(session_id)
+        file_type_preview = get_file_type(Path(file.filename))
+        if existing_primary and existing_primary.file_type in ("gpx", "fit") and file_type_preview == "video":
+            reuse_session = True
+
+    if reuse_session:
+        # Save video to existing session
+        file_path = file_manager.save_file(session_id, file.filename, content)
+    else:
+        # Create new session
+        session_id = file_manager.create_session()
+        file_path = file_manager.save_file(session_id, file.filename, content)
 
     # Determine file type
     file_type = get_file_type(file_path)
@@ -232,7 +281,10 @@ async def upload_file(file: Annotated[UploadFile, File(...)]) -> UploadResponse:
             video_metadata = extract_video_metadata(file_path)
         except Exception as e:
             logger.error(f"Failed to extract video metadata: {e}")
-            file_manager.cleanup_session(session_id)
+            if not reuse_session:
+                file_manager.cleanup_session(session_id)
+            else:
+                file_path.unlink(missing_ok=True)
             raise HTTPException(
                 status_code=400,
                 detail="Could not read video file. Ensure it's a valid video format.",
@@ -251,11 +303,34 @@ async def upload_file(file: Annotated[UploadFile, File(...)]) -> UploadResponse:
             gpx_fit_metadata = extract_gpx_fit_metadata(file_path)
         except Exception as e:
             logger.error(f"Failed to extract GPX/FIT metadata: {e}")
-            file_manager.cleanup_session(session_id)
+            if not reuse_session:
+                file_manager.cleanup_session(session_id)
+            else:
+                file_path.unlink(missing_ok=True)
             raise HTTPException(
                 status_code=400,
                 detail=f"Could not read {file_type.upper()} file. Ensure it's a valid format.",
             ) from e
+
+    # If reusing session, promote video to primary (demote GPX/FIT to secondary)
+    if reuse_session:
+        try:
+            files = file_manager.promote_to_primary(
+                session_id=session_id,
+                filename=file.filename,
+                file_path=file_path,
+                file_type=file_type,
+                video_metadata=video_metadata,
+                gps_quality=gps_quality,
+            )
+        except ValueError as e:
+            file_path.unlink(missing_ok=True)
+            raise HTTPException(status_code=400, detail=str(e)) from e
+
+        return UploadResponse(
+            session_id=session_id,
+            files=files,
+        )
 
     # Add file to session as primary
     file_info = file_manager.add_file(

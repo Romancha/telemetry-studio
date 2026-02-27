@@ -201,15 +201,23 @@ class FileUploader {
                        (this.state.getPrimaryFile()?.file_type === 'gpx' ||
                         this.state.getPrimaryFile()?.file_type === 'fit');
 
+        const hasGpsPrimary = !hasVideo &&
+            (this.state.getPrimaryFile()?.file_type === 'gpx' ||
+             this.state.getPrimaryFile()?.file_type === 'fit');
+
         try {
             let response;
 
             if (type === 'video') {
-                // Video always goes as primary, may need to create new session
+                // If session has GPX/FIT as primary, send session_id to reuse session
+                const body = { file_path: path };
+                if (hasGpsPrimary && this.state.sessionId) {
+                    body.session_id = this.state.sessionId;
+                }
                 response = await fetch('/api/local-file', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ file_path: path })
+                    body: JSON.stringify(body)
                 });
             } else {
                 // GPS file
@@ -240,7 +248,10 @@ class FileUploader {
 
             const data = await response.json();
 
-            if (type === 'video' || !hasVideo) {
+            if (type === 'video' && hasGpsPrimary && this.state.sessionId) {
+                // Session reused — update files without resetting session
+                this.state.setFiles(data.files);
+            } else if (type === 'video' || !hasVideo) {
                 this.state.setSession(data.session_id, data);
             } else {
                 this.state.setFiles(data.files);
@@ -264,6 +275,9 @@ class FileUploader {
         }
 
         const hasVideo = this.state.getPrimaryFile()?.file_type === 'video';
+        const hasGpsPrimary = !hasVideo &&
+            (this.state.getPrimaryFile()?.file_type === 'gpx' ||
+             this.state.getPrimaryFile()?.file_type === 'fit');
 
         try {
             const formData = new FormData();
@@ -272,6 +286,10 @@ class FileUploader {
             let response;
 
             if (type === 'video') {
+                // If session has GPX/FIT as primary, send session_id to reuse session
+                if (hasGpsPrimary && this.state.sessionId) {
+                    formData.append('session_id', this.state.sessionId);
+                }
                 response = await fetch('/api/upload', {
                     method: 'POST',
                     body: formData
@@ -298,7 +316,10 @@ class FileUploader {
 
             const data = await response.json();
 
-            if (type === 'video' || !hasVideo) {
+            if (type === 'video' && hasGpsPrimary && this.state.sessionId) {
+                // Session reused — update files without resetting session
+                this.state.setFiles(data.files);
+            } else if (type === 'video' || !hasVideo) {
                 this.state.setSession(data.session_id, data);
             } else {
                 this.state.setFiles(data.files);

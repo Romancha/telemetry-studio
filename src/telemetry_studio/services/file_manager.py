@@ -155,6 +155,49 @@ class FileManager:
         """Get secondary file from session."""
         return self.get_file_by_role(session_id, FileRole.SECONDARY)
 
+    def promote_to_primary(
+        self,
+        session_id: str,
+        filename: str,
+        file_path: Path,
+        file_type: str,
+        video_metadata: VideoMetadata | None = None,
+        gps_quality: GPSQualityReport | None = None,
+    ) -> list[FileInfo]:
+        """Promote a new video file to PRIMARY, demoting existing GPX/FIT PRIMARY to SECONDARY.
+
+        Used when a video is uploaded into a session that already has GPX/FIT as primary.
+        """
+        files = self.get_files(session_id)
+        existing_primary = None
+        for f in files:
+            if f.role == FileRole.PRIMARY:
+                existing_primary = f
+                break
+
+        if not existing_primary:
+            raise ValueError("No primary file to demote")
+
+        if existing_primary.file_type not in ("gpx", "fit"):
+            raise ValueError("Can only promote when existing primary is GPX/FIT")
+
+        # Demote existing PRIMARY to SECONDARY
+        existing_primary.role = FileRole.SECONDARY
+
+        # Add new video as PRIMARY
+        new_primary = FileInfo(
+            filename=filename,
+            file_path=str(file_path),
+            file_type=file_type,
+            role=FileRole.PRIMARY,
+            video_metadata=video_metadata,
+            gps_quality=gps_quality,
+        )
+        files.append(new_primary)
+
+        self._save_files_metadata(session_id, files)
+        return files
+
     def remove_file_by_role(self, session_id: str, role: FileRole) -> bool:
         """Remove a file by role from the session."""
         files = self.get_files(session_id)

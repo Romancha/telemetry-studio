@@ -226,6 +226,7 @@ class LocalFileRequest(BaseModel):
     """Request for using a local file path."""
 
     file_path: str
+    session_id: str | None = None
 
 
 class SecondaryFileRequest(BaseModel):
