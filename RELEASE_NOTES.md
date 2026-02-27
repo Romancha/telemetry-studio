@@ -1,5 +1,25 @@
 # Release Notes
 
+## Version 0.4.0 — 27 Feb 2026
+
+### 🎉 Major Features
+
+**Non-GoPro Video Support**
+
+Full support for non-GoPro video files with external GPS data.
+
+- **MOV format support** - Upload and render `.mov` video files alongside existing formats
+- **External GPX/FIT fallback** - Automatically use external GPS data when video has no embedded telemetry
+- **Video rotation handling** - Detect and apply correct rotation for videos with non-standard orientation
+- **Order-independent uploads** - Upload GPX/FIT file first, then video — the session is reused instead of creating a new one
+
+### 🐞 Fixes
+
+- Fixed pillarbox temp file timestamp being set to current time, breaking GPS time alignment with `--video-time-start file-modified`
+- Fixed pillarbox/letterbox preview now uses fit-to-canvas instead of stretch
+
+---
+
 ## Version 0.3.0 — 04 Feb 2026
 
 ### 🎉 Major Features
