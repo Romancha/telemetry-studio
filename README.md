@@ -10,6 +10,8 @@ A visual web interface for creating video overlays with GPS telemetry data. Wrap
 - **Quick Mode** — Select from predefined layouts, customize units and map styles
 - **Advanced Mode** — Visual drag-and-drop editor for creating custom overlay layouts
 - **Live Preview** — See your overlay in real-time as you configure it
+- **Non-GoPro Video Support** — Use any video with external GPX/FIT files for GPS data
+- **Vertical Video Support** — Automatic rotation detection and correct overlay rendering
 - **GPS Quality Analysis** — Automatic signal quality check with warnings before rendering
 - **Template Management** — Save and load custom templates
 - **Batch Rendering** — Process multiple files with the same settings
