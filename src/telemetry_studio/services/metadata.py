@@ -1,5 +1,6 @@
 """Metadata extraction service using gopro_overlay."""
 
+import json
 import logging
 from pathlib import Path
 
@@ -15,6 +16,44 @@ if settings.enable_gopro_patches:
 logger = logging.getLogger(__name__)
 
 
+_VALID_ROTATIONS = {0, 90, 180, 270}
+
+
+def get_video_rotation(file_path: Path) -> int:
+    """Get video rotation magnitude from metadata.
+
+    Returns one of 0, 90, 180, 270. Unrecognised values fall back to 0.
+    """
+    from gopro_overlay.ffmpeg import FFMPEG
+
+    try:
+        ffmpeg = FFMPEG()
+        output = ffmpeg.ffprobe().invoke(
+            ["-hide_banner", "-print_format", "json", "-show_streams", str(file_path)]
+        ).stdout
+        data = json.loads(str(output))
+        for stream in data.get("streams", []):
+            if stream.get("codec_type") == "video":
+                for sd in stream.get("side_data_list", []):
+                    if "rotation" in sd:
+                        rotation = abs(int(sd["rotation"]))
+                        return rotation if rotation in _VALID_ROTATIONS else 0
+                rotation_tag = stream.get("tags", {}).get("rotate")
+                if rotation_tag:
+                    rotation = abs(int(rotation_tag))
+                    return rotation if rotation in _VALID_ROTATIONS else 0
+    except Exception as e:
+        logger.debug("Could not determine video rotation for %s: %s", file_path, e)
+    return 0
+
+
+def get_display_dimensions(width: int, height: int, rotation: int) -> tuple[int, int]:
+    """Return (width, height) accounting for rotation."""
+    if rotation in (90, 270):
+        return height, width
+    return width, height
+
+
 def extract_video_metadata(file_path: Path) -> VideoMetadata | None:
     """Extract metadata from a video file using FFMPEGGoPro."""
     from gopro_overlay.ffmpeg import FFMPEG
@@ -28,19 +67,21 @@ def extract_video_metadata(file_path: Path) -> VideoMetadata | None:
         video = recording.video
         has_gps = recording.data is not None
 
+        rotation = get_video_rotation(file_path)
+        display_w, display_h = get_display_dimensions(
+            video.dimension.x, video.dimension.y, rotation
+        )
+
         return VideoMetadata(
-            width=video.dimension.x,
-            height=video.dimension.y,
+            width=display_w,
+            height=display_h,
             duration_seconds=video.duration.millis() / 1000.0,
             frame_count=video.frame_count,
             frame_rate=video.frame_rate(),
             has_gps=has_gps,
         )
-    except Exception as e:
-        import traceback
-
-        print(f"ERROR extracting video metadata: {e}")
-        traceback.print_exc()
+    except Exception:
+        logger.exception("Error extracting video metadata from %s", file_path)
         return None
 
 
@@ -66,15 +107,12 @@ def extract_gpx_fit_metadata(file_path: Path) -> GpxFitMetadata | None:
             gps_point_count=point_count,
             duration_seconds=duration,
         )
-    except Exception as e:
-        import traceback
-
-        print(f"ERROR extracting GPX/FIT metadata: {e}")
-        traceback.print_exc()
+    except Exception:
+        logger.exception("Error extracting GPX/FIT metadata from %s", file_path)
         return None
 
 
 def get_file_type(file_path: Path) -> str:
     """Determine the file type from extension."""
     suffix = file_path.suffix.lower()
-    return {".mp4": "video", ".gpx": "gpx", ".fit": "fit"}.get(suffix, "unknown")
+    return {".mp4": "video", ".mov": "video", ".gpx": "gpx", ".fit": "fit"}.get(suffix, "unknown")

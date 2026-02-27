@@ -5,6 +5,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import APIRouter, HTTPException
 
+from pathlib import Path
+
 from telemetry_studio.models.schemas import PreviewRequest, PreviewResponse
 from telemetry_studio.services.file_manager import file_manager
 from telemetry_studio.services.renderer import image_to_base64, render_preview
@@ -27,6 +29,12 @@ async def generate_preview(request: PreviewRequest) -> PreviewResponse:
     if file_path is None:
         raise HTTPException(status_code=404, detail="File not found in session")
 
+    # Get secondary GPX/FIT file if present (for videos without embedded GPS)
+    gpx_path = None
+    secondary = file_manager.get_secondary_file(request.session_id)
+    if secondary:
+        gpx_path = Path(secondary.file_path)
+
     try:
         # Render the preview in a separate thread to avoid asyncio conflicts
         loop = asyncio.get_running_loop()
@@ -43,6 +51,7 @@ async def generate_preview(request: PreviewRequest) -> PreviewResponse:
                 map_style=request.map_style,
                 gps_dop_max=request.gps_dop_max,
                 gps_speed_max=request.gps_speed_max,
+                gpx_path=gpx_path,
             ),
         )
 

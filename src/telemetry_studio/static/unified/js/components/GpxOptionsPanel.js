@@ -1,7 +1,7 @@
 /**
  * GpxOptionsPanel - Panel for GPX/FIT merge options
  * Shows merge mode dropdown when video + GPX/FIT are loaded
- * Shows time alignment options when in GPX-only mode
+ * Shows time alignment options when GPX/FIT is loaded
  */
 
 class GpxOptionsPanel {
@@ -40,7 +40,7 @@ class GpxOptionsPanel {
                     <div class="gpx-option-desc" id="merge-mode-desc">Replace video GPS with GPX data</div>
                 </div>
 
-                <!-- Time Alignment (GPX-only mode) -->
+                <!-- Time Alignment (Merge Mode and GPX-only mode) -->
                 <div class="gpx-option-group" id="time-alignment-group" style="display: none;">
                     <div class="gpx-option-row">
                         <label for="video-time-alignment">Time Sync</label>
@@ -106,12 +106,11 @@ class GpxOptionsPanel {
         }
 
         // Show appropriate options based on mode
+        this.timeAlignmentGroup.style.display = 'block';
         if (isMergeMode) {
             this.mergeModeGroup.style.display = 'block';
-            this.timeAlignmentGroup.style.display = 'none';
-        } else if (isGpxOnlyMode) {
+        } else {
             this.mergeModeGroup.style.display = 'none';
-            this.timeAlignmentGroup.style.display = 'block';
         }
     }
 

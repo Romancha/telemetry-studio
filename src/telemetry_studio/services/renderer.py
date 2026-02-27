@@ -269,6 +269,7 @@ def render_preview(
     map_style: str | None = None,
     gps_dop_max: float = DEFAULT_GPS_DOP_MAX,
     gps_speed_max: float = DEFAULT_GPS_SPEED_MAX,
+    gpx_path: Path | None = None,
 ) -> tuple[bytes, int, int]:
     """Render a preview image for the given file and settings.
 
@@ -309,19 +310,26 @@ def render_preview(
     if layout_info is None:
         layout_info = get_available_layouts()[0]
 
-    # Try to extract video frame as background (for MP4 files)
+    # Try to extract video frame as background (for video files)
     background = None
-    if suffix == ".mp4":
-        # Get actual video dimensions
-        ffmpeg = FFMPEG()
-        ffmpeg_gopro = FFMPEGGoPro(ffmpeg)
-        recording = ffmpeg_gopro.find_recording(file_path)
-        video_width = recording.video.dimension.x
-        video_height = recording.video.dimension.y
+    if suffix in (".mp4", ".mov"):
+        try:
+            from telemetry_studio.services.metadata import get_display_dimensions, get_video_rotation
 
-        background = _extract_video_frame(file_path, frame_time_ms, video_width, video_height)
-        if background and background.size != (layout_info.width, layout_info.height):
-            background = background.resize((layout_info.width, layout_info.height), Image.Resampling.LANCZOS)
+            # Get display dimensions accounting for rotation
+            ffmpeg = FFMPEG()
+            ffmpeg_gopro = FFMPEGGoPro(ffmpeg)
+            recording = ffmpeg_gopro.find_recording(file_path)
+            rotation = get_video_rotation(file_path)
+            video_width, video_height = get_display_dimensions(
+                recording.video.dimension.x, recording.video.dimension.y, rotation
+            )
+
+            background = _extract_video_frame(file_path, frame_time_ms, video_width, video_height)
+            if background and background.size != (layout_info.width, layout_info.height):
+                background = background.resize((layout_info.width, layout_info.height), Image.Resampling.LANCZOS)
+        except Exception as e:
+            print(f"Failed to extract video frame for preview: {e}")
 
     # Create base image - use video frame or black background
     image = (
@@ -344,7 +352,7 @@ def render_preview(
         # Privacy zone
         privacy = NoPrivacyZone()
 
-        if suffix == ".mp4":
+        if suffix in (".mp4", ".mov"):
             # Load GoPro video
             ffmpeg = FFMPEG()
             ffmpeg_gopro = FFMPEGGoPro(ffmpeg)
@@ -360,9 +368,13 @@ def render_preview(
             try:
                 gopro = loader.load(file_path)
                 framemeta = gopro.framemeta
-            except OSError as e:
-                # Video doesn't have GPS data, create empty framemeta
-                raise ValueError("Video file does not contain GPS metadata") from e
+            except (OSError, TypeError, ValueError) as e:
+                if gpx_path:
+                    # Video has no GPS — use external GPX/FIT file
+                    timeseries = load_external(gpx_path, units)
+                    framemeta = timeseries_to_framemeta(timeseries, units)
+                else:
+                    raise ValueError("Video file does not contain GPS metadata") from e
 
         else:
             # Load GPX or FIT file
@@ -410,6 +422,7 @@ async def render_preview_from_layout(
     map_style: str | None = None,
     gps_dop_max: float = DEFAULT_GPS_DOP_MAX,
     gps_speed_max: float = DEFAULT_GPS_SPEED_MAX,
+    gpx_path: Path | None = None,
 ) -> dict:
     """
     Render preview from an editor layout.
@@ -454,6 +467,7 @@ async def render_preview_from_layout(
                 map_style,
                 gps_dop_max,
                 gps_speed_max,
+                gpx_path,
             ),
         )
         return {
@@ -487,6 +501,7 @@ def _render_layout_with_data(
     map_style: str | None = None,
     gps_dop_max: float = DEFAULT_GPS_DOP_MAX,
     gps_speed_max: float = DEFAULT_GPS_SPEED_MAX,
+    gpx_path: Path | None = None,
 ) -> tuple[bytes, int, int]:
     """Render layout XML with actual data from file."""
     from gopro_overlay.ffmpeg import FFMPEG
@@ -512,13 +527,17 @@ def _render_layout_with_data(
 
     # Try to extract video frame as background (for MP4 files)
     background = None
-    if suffix == ".mp4":
+    if suffix in (".mp4", ".mov"):
         try:
+            from telemetry_studio.services.metadata import get_display_dimensions, get_video_rotation
+
             ffmpeg = FFMPEG()
             ffmpeg_gopro = FFMPEGGoPro(ffmpeg)
             recording = ffmpeg_gopro.find_recording(file_path)
-            video_width = recording.video.dimension.x
-            video_height = recording.video.dimension.y
+            rotation = get_video_rotation(file_path)
+            video_width, video_height = get_display_dimensions(
+                recording.video.dimension.x, recording.video.dimension.y, rotation
+            )
 
             background = _extract_video_frame(file_path, frame_time_ms, video_width, video_height)
             if background and background.size != (width, height):
@@ -540,7 +559,7 @@ def _render_layout_with_data(
         font = _load_font_with_fallback()
         privacy = NoPrivacyZone()
 
-        if suffix == ".mp4":
+        if suffix in (".mp4", ".mov"):
             ffmpeg = FFMPEG()
             ffmpeg_gopro = FFMPEGGoPro(ffmpeg)
 
@@ -555,7 +574,11 @@ def _render_layout_with_data(
                 gopro = loader.load(file_path)
                 framemeta = gopro.framemeta
             except (OSError, TypeError, ValueError) as e:
-                raise ValueError(f"Could not load GPS data from video: {e}. Try adding a GPX/FIT file.") from e
+                if gpx_path:
+                    timeseries = load_external(gpx_path, units)
+                    framemeta = timeseries_to_framemeta(timeseries, units)
+                else:
+                    raise ValueError(f"Could not load GPS data from video: {e}. Try adding a GPX/FIT file.") from e
         else:
             timeseries = load_external(file_path, units)
             framemeta = timeseries_to_framemeta(timeseries, units)
@@ -679,6 +702,8 @@ def generate_cli_command(
             f"--gpx {shlex.quote(secondary.file_path)}",
             f"--gpx-merge {shlex.quote(gpx_merge_mode)}",
         ]
+        if video_time_alignment:
+            cmd_parts.append(f"--video-time-start {shlex.quote(video_time_alignment)}")
     elif primary_type in ("gpx", "fit"):
         # Mode 3: GPX/FIT only (overlay-only mode)
         # Get overlay size from layout
@@ -697,7 +722,6 @@ def generate_cli_command(
             f"--gpx {shlex.quote(primary_path)}",
             f"--overlay-size {layout_info.width}x{layout_info.height}",
         ]
-        # Add time alignment if specified
         if video_time_alignment:
             cmd_parts.append(f"--video-time-start {shlex.quote(video_time_alignment)}")
     else:
@@ -707,6 +731,8 @@ def generate_cli_command(
             shlex.quote(primary_path),
             shlex.quote(output_file),
         ]
+        if video_time_alignment:
+            cmd_parts.append(f"--video-time-start {shlex.quote(video_time_alignment)}")
 
     # Handle layout - either custom XML or predefined
     if layout_xml_path:

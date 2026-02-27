@@ -67,6 +67,38 @@ class TestRendererPreview:
 
 
 @pytest.mark.integration
+class TestRendererPreviewMOV:
+    """Tests for preview rendering with MOV video and external GPX."""
+
+    def test_render_mov_with_external_gpx(self, integration_test_mov_video, integration_test_run_gpx):
+        """Render preview with MOV video + external GPX file via gpx_path."""
+        from telemetry_studio.services.renderer import render_preview
+
+        png_bytes, width, height = render_preview(
+            file_path=integration_test_mov_video,
+            layout="default-1920x1080",
+            frame_time_ms=0,
+            gpx_path=integration_test_run_gpx,
+        )
+
+        assert len(png_bytes) > 0
+        assert png_bytes[:8] == b"\x89PNG\r\n\x1a\n"
+        assert width == 1920
+        assert height == 1080
+
+    def test_render_mov_without_gpx_raises(self, integration_test_mov_video):
+        """Render MOV without GPS and without gpx_path should raise ValueError."""
+        from telemetry_studio.services.renderer import render_preview
+
+        with pytest.raises(ValueError, match="GPS"):
+            render_preview(
+                file_path=integration_test_mov_video,
+                layout="default-1920x1080",
+                frame_time_ms=0,
+            )
+
+
+@pytest.mark.integration
 class TestRendererLayouts:
     """Tests for layout handling."""
 
@@ -246,6 +278,43 @@ class TestRendererCLICommand:
 
         assert "--gpx" in cmd
         assert str(sample_gpx_file) in cmd
+        assert "--gpx-merge" in cmd
+
+    def test_generate_cli_command_video_gpx_with_time_alignment(
+        self, clean_file_manager, integration_test_video, sample_gpx_file, sample_video_metadata, monkeypatch
+    ):
+        """Generate CLI command with GPX merge should include --video-time-start."""
+        from telemetry_studio.services import file_manager as fm_module
+        from telemetry_studio.services.renderer import generate_cli_command
+
+        session_id = clean_file_manager.create_local_session()
+        clean_file_manager.add_file(
+            session_id=session_id,
+            filename=integration_test_video.name,
+            file_path=integration_test_video,
+            file_type="video",
+            role=FileRole.PRIMARY,
+            video_metadata=sample_video_metadata,
+        )
+        clean_file_manager.add_file(
+            session_id=session_id,
+            filename=sample_gpx_file.name,
+            file_path=sample_gpx_file,
+            file_type="gpx",
+            role=FileRole.SECONDARY,
+        )
+
+        monkeypatch.setattr(fm_module, "file_manager", clean_file_manager)
+
+        cmd = generate_cli_command(
+            session_id=session_id,
+            output_file="/tmp/output.mp4",
+            layout="default-1920x1080",
+            video_time_alignment="2024-01-01T12:00:00",
+        )
+
+        assert "--video-time-start" in cmd
+        assert "2024-01-01T12:00:00" in cmd
         assert "--gpx-merge" in cmd
 
     def test_generate_cli_command_with_ffmpeg_profile(self, clean_file_manager, integration_test_video, monkeypatch):

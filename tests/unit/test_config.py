@@ -17,6 +17,15 @@ def test_default_settings():
     assert ".telemetry-studio" in str(settings.templates_dir)
 
 
+def test_mov_in_allowed_extensions():
+    """Verify .mov is in allowed_extensions."""
+    from telemetry_studio.config import Settings
+
+    settings = Settings()
+
+    assert ".mov" in settings.allowed_extensions
+
+
 def test_env_prefix():
     """Test that environment variables use TELEMETRY_STUDIO_ prefix."""
     os.environ["TELEMETRY_STUDIO_PORT"] = "9000"

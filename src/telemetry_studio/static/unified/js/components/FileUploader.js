@@ -1,7 +1,7 @@
 /**
  * FileUploader - Handles video and GPS file uploads
  * Two separate fields:
- * - Video field: MP4 files
+ * - Video field: MP4/MOV files
  * - GPS field: GPX/FIT files
  *
  * Modes determined by what's loaded:
@@ -53,9 +53,9 @@ class FileUploader {
                     </div>
                 ` : `
                     <div id="video-drop-zone" class="file-drop-zone">
-                        <span class="drop-zone-text">Drop MP4 or click</span>
+                        <span class="drop-zone-text">Drop MP4/MOV or click</span>
                     </div>
-                    <input type="file" id="video-file-input" accept=".mp4" class="visually-hidden">
+                    <input type="file" id="video-file-input" accept=".mp4,.mov" class="visually-hidden">
                 `}
                 <div id="video-file-info" class="file-info" style="display: none;">
                     <span class="file-info-name"></span>
@@ -255,7 +255,7 @@ class FileUploader {
     }
 
     async _uploadFile(file, type) {
-        const validExtensions = type === 'video' ? ['.mp4'] : ['.gpx', '.fit'];
+        const validExtensions = type === 'video' ? ['.mp4', '.mov'] : ['.gpx', '.fit'];
         const ext = '.' + file.name.split('.').pop().toLowerCase();
 
         if (!validExtensions.includes(ext)) {

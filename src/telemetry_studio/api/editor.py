@@ -175,6 +175,7 @@ async def generate_preview(request: EditorPreviewRequest):
 
         # Get file path if session has uploaded file
         file_path = None
+        gpx_path = None
         if request.session_id:
             file_path = file_manager.get_file_path(request.session_id)
             print(f"[Editor Preview] session_id={request.session_id}, file_path={file_path}")
@@ -184,6 +185,11 @@ async def generate_preview(request: EditorPreviewRequest):
             if not file_path or not file_path.exists():
                 print(f"[Editor Preview] File not found for session: {request.session_id}")
                 raise HTTPException(status_code=404, detail="Session file not found. Please re-upload your file.")
+
+            # Get secondary GPX/FIT file if present (for videos without embedded GPS)
+            secondary = file_manager.get_secondary_file(request.session_id)
+            if secondary:
+                gpx_path = Path(secondary.file_path)
         else:
             print("[Editor Preview] No session_id provided")
 
@@ -198,6 +204,7 @@ async def generate_preview(request: EditorPreviewRequest):
             map_style=request.map_style,
             gps_dop_max=request.gps_dop_max,
             gps_speed_max=request.gps_speed_max,
+            gpx_path=gpx_path,
         )
 
         print(
