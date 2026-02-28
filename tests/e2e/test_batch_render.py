@@ -207,6 +207,27 @@ class TestBatchRenderExecution:
         """)
         app_page.wait_for_timeout(100)
 
+    def _dismiss_batch_pre_check_dialogs(self, app_page: Page):
+        """Dismiss pre-check dialogs (overwrite + GPS) that appear after batch start.
+
+        The batch flow shows: overwrite dialog (if conflicts) → GPS quality dialog → render.
+        Both are async awaits, so we must wait for each to appear before dismissing.
+        """
+        # First check if overwrite dialog appears (may not if no existing files)
+        overwrite_btn = app_page.locator("#overwrite-confirm-btn")
+        try:
+            overwrite_btn.wait_for(state="visible", timeout=3000)
+            overwrite_btn.click()
+            app_page.wait_for_timeout(300)
+        except Exception:
+            pass
+
+        # GPS quality dialog always appears - wait for it
+        gps_continue = app_page.locator("#gps-batch-render-btn")
+        gps_continue.wait_for(state="visible", timeout=30000)
+        gps_continue.click()
+        app_page.wait_for_timeout(500)
+
     def test_batch_render_starts_and_cancel(self, app_page: Page, test_video_path: Path, test_video_path_2: Path):
         """Test that batch render can be started (cancelled immediately to avoid long wait)."""
         app_page.locator("#btn-batch-render").click()
@@ -227,10 +248,12 @@ class TestBatchRenderExecution:
         start_btn = modal.locator("#batch-start-btn")
         start_btn.click()
 
+        # Dismiss GPS warning and overwrite dialogs that appear after start
+        self._dismiss_batch_pre_check_dialogs(app_page)
+
         # Wait for batch to start processing
         app_page.wait_for_timeout(1500)
 
-        # Modal title should change or progress should appear
         # Cancel batch to avoid long wait
         cancel_btn = app_page.locator("#batch-cancel-btn")
         if cancel_btn.is_visible():
@@ -253,6 +276,9 @@ class TestBatchRenderExecution:
         # Start batch
         start_btn = modal.locator("#batch-start-btn")
         start_btn.click()
+
+        # Dismiss GPS warning and overwrite dialogs that appear after start
+        self._dismiss_batch_pre_check_dialogs(app_page)
 
         # Wait for progress to appear
         app_page.wait_for_timeout(2000)
@@ -281,6 +307,9 @@ class TestBatchRenderExecution:
         # Start batch
         start_btn = modal.locator("#batch-start-btn")
         start_btn.click()
+
+        # Dismiss GPS warning and overwrite dialogs that appear after start
+        self._dismiss_batch_pre_check_dialogs(app_page)
 
         # Wait for status bar to update
         app_page.wait_for_timeout(1500)

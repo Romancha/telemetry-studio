@@ -12,13 +12,13 @@ class TestAppLoads:
 
     def test_homepage_loads(self, app_page: Page):
         """Verify the homepage loads with correct title."""
-        expect(app_page).to_have_title("GoPro Dashboard Overlay")
+        expect(app_page).to_have_title("Telemetry Studio")
 
     def test_main_sections_visible(self, app_page: Page):
         """Verify main UI sections are visible."""
         # Header
         expect(app_page.locator(".unified-header")).to_be_visible()
-        expect(app_page.locator("h1")).to_have_text("GoPro Dashboard Overlay")
+        expect(app_page.locator("h1")).to_have_text("Telemetry Studio")
 
         # Sidebar with file uploader
         expect(app_page.locator("#sidebar")).to_be_visible()
