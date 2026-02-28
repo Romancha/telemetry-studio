@@ -1,5 +1,15 @@
 # Release Notes
 
+## Version 0.4.1 — 28 Feb 2026
+
+### ✨ Improvements
+
+- **Version display in UI** - Application version is now shown in the interface
+- **Fix project name** - Updated branding across all UI elements
+- **Static asset caching** - Added no-cache headers to prevent stale assets after updates
+
+---
+
 ## Version 0.4.0 — 27 Feb 2026
 
 ### 🎉 Major Features
