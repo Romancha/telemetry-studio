@@ -31,6 +31,12 @@ Full visual editor with drag-and-drop widgets. Create custom layouts with comple
 
 ![Advanced Mode](docs/images/advanced_mode.jpg)
 
+### External GPX & Vertical Video
+
+Use any video with external GPX/FIT files. Vertical videos are automatically detected and rendered correctly.
+
+![External GPX & Vertical Video](docs/images/external_gpx_vertical.jpg)
+
 ### Batch Rendering
 
 Process multiple videos at once with the same overlay settings.
