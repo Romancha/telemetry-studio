@@ -100,10 +100,16 @@
         </section>
 
         <footer>
-            <p>Telemetry Studio UI v0.1.0</p>
+            <p>Telemetry Studio <span id="app-version"></span> | <a href="https://github.com/Romancha/telemetry-studio" target="_blank" rel="noopener noreferrer">GitHub</a></p>
         </footer>
     </div>
 
     <script src="/static/app.js"></script>
+    <script>
+        fetch('/api/version').then(r => r.json()).then(data => {
+            const el = document.getElementById('app-version');
+            if (el) el.textContent = 'v' + data.version;
+        });
+    </script>
 </body>
 </html>

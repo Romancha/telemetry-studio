@@ -145,6 +145,23 @@ body {
     color: var(--color-text-primary);
 }
 
+.app-version {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-tertiary);
+    font-weight: var(--font-weight-normal);
+}
+
+.github-link {
+    color: var(--color-text-secondary);
+    display: flex;
+    align-items: center;
+    transition: color 0.2s;
+}
+
+.github-link:hover {
+    color: var(--color-text-primary);
+}
+
 .header-center {
     display: flex;
     align-items: center;

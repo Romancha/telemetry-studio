@@ -10,7 +10,9 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 
+from telemetry_studio import __version__
 from telemetry_studio.api import command, editor, layouts, options, preview, render, templates, upload
 from telemetry_studio.config import settings
 from telemetry_studio.services.file_manager import file_manager
@@ -58,14 +60,27 @@ async def lifespan(app: FastAPI):
         await task
 
 
+class StaticCacheMiddleware(BaseHTTPMiddleware):
+    """Set Cache-Control: no-cache for static files so the browser revalidates via ETag."""
+
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        if request.url.path.startswith("/static/"):
+            response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     app = FastAPI(
         title="Telemetry Studio",
         description="Web interface for telemetry video overlay configuration and preview",
-        version="0.1.0",
+        version=__version__,
         lifespan=lifespan,
     )
+
+    # Middleware: force browser to revalidate cached static files via ETag
+    app.add_middleware(StaticCacheMiddleware)
 
     # Include API routers
     app.include_router(upload.router, prefix="/api", tags=["upload"])
@@ -87,9 +102,9 @@ def create_app() -> FastAPI:
         """Serve the unified application page."""
         unified_html = static_dir / "unified" / "index.html"
         if unified_html.exists():
-            return FileResponse(unified_html)
+            return FileResponse(unified_html, headers={"Cache-Control": "no-cache"})
         # Fallback to old index
-        return FileResponse(static_dir / "index.html")
+        return FileResponse(static_dir / "index.html", headers={"Cache-Control": "no-cache"})
 
     # Legacy routes - redirect to unified app
     @app.get("/editor")
@@ -97,18 +112,23 @@ def create_app() -> FastAPI:
         """Redirect to unified app (editor is now integrated)."""
         unified_html = static_dir / "unified" / "index.html"
         if unified_html.exists():
-            return FileResponse(unified_html)
+            return FileResponse(unified_html, headers={"Cache-Control": "no-cache"})
         # Fallback to old editor
         editor_html = static_dir / "editor" / "index.html"
         if editor_html.exists():
-            return FileResponse(editor_html)
-        return FileResponse(static_dir / "index.html")
+            return FileResponse(editor_html, headers={"Cache-Control": "no-cache"})
+        return FileResponse(static_dir / "index.html", headers={"Cache-Control": "no-cache"})
+
+    @app.get("/api/version")
+    async def get_version():
+        """Return application version."""
+        return {"version": __version__}
 
     # Legacy page (old main page)
     @app.get("/legacy")
     async def legacy_page():
         """Serve the old main page for backwards compatibility."""
-        return FileResponse(static_dir / "index.html")
+        return FileResponse(static_dir / "index.html", headers={"Cache-Control": "no-cache"})
 
     return app
 
