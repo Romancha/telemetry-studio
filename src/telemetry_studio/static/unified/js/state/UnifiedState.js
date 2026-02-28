@@ -171,7 +171,7 @@ class UnifiedState {
      */
     isGpxOnlyMode() {
         const primary = this.getPrimaryFile();
-        return primary && (primary.file_type === 'gpx' || primary.file_type === 'fit');
+        return primary && (primary.file_type === 'gpx' || primary.file_type === 'fit' || primary.file_type === 'srt');
     }
 
     /**
@@ -181,6 +181,16 @@ class UnifiedState {
     isMergeMode() {
         const primary = this.getPrimaryFile();
         return primary && primary.file_type === 'video' && this.hasSecondaryFile();
+    }
+
+    /**
+     * Check if secondary file is SRT (DJI telemetry).
+     * SRT time sync is handled automatically — no user config needed.
+     * @returns {boolean}
+     */
+    isSrtSecondary() {
+        const secondary = this.getSecondaryFile();
+        return secondary && secondary.file_type === 'srt';
     }
 
     /**

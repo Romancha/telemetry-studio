@@ -44,8 +44,7 @@ class GPSQualityCard {
     }
 
     _update() {
-        const primaryFile = this.state.getPrimaryFile();
-        const gpsQuality = primaryFile?.gps_quality;
+        const gpsQuality = this._getGpsQuality();
 
         if (!gpsQuality) {
             this.card.style.display = 'none';
@@ -54,6 +53,15 @@ class GPSQualityCard {
 
         this.card.style.display = 'block';
         this._renderQuality(gpsQuality);
+    }
+
+    _getGpsQuality() {
+        // Check primary file first (video with embedded GPS)
+        const primaryFile = this.state.getPrimaryFile();
+        if (primaryFile?.gps_quality) return primaryFile.gps_quality;
+        // Check secondary file (external GPX/FIT/SRT)
+        const secondaryFile = this.state.getSecondaryFile();
+        return secondaryFile?.gps_quality || null;
     }
 
     _renderQuality(quality) {
@@ -89,10 +97,11 @@ class GPSQualityCard {
 
         // Update stats
         if (quality.quality_score !== 'no_signal') {
+            const dopDisplay = quality.dop_mean != null ? quality.dop_mean.toFixed(2) : '—';
             this.stats.innerHTML = `
                 <div class="gps-stat">
                     <span class="gps-stat-label">DOP avg:</span>
-                    <span class="gps-stat-value">${quality.dop_mean?.toFixed(2) || 'N/A'}</span>
+                    <span class="gps-stat-value">${dopDisplay}</span>
                 </div>
                 <div class="gps-stat">
                     <span class="gps-stat-label">Lock rate:</span>
@@ -158,8 +167,7 @@ class GPSQualityCard {
      * Get GPS quality data for current file
      */
     getQuality() {
-        const primaryFile = this.state.getPrimaryFile();
-        return primaryFile?.gps_quality || null;
+        return this._getGpsQuality();
     }
 
     /**

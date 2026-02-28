@@ -89,3 +89,5 @@ temp/
 /tests/fixtures/videos/*_overlay.*
 # Design documents
 docs/plans/
+
+tests/fixtures/videos/large

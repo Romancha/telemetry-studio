@@ -36,3 +36,25 @@ def integration_test_run_gpx():
     if not path.exists():
         pytest.skip(f"Integration test GPX not found: {path}")
     return path
+
+
+@pytest.fixture(scope="module")
+def integration_test_dji_video():
+    """Real DJI test video for integration tests (module-scoped for efficiency)."""
+    from tests.fixtures.data import TEST_DJI_VIDEO_PATH
+
+    path = Path(TEST_DJI_VIDEO_PATH)
+    if not path.exists():
+        pytest.skip(f"Integration test DJI video not found: {path}")
+    return path
+
+
+@pytest.fixture(scope="module")
+def integration_test_dji_srt():
+    """Real DJI SRT telemetry file for integration tests (module-scoped for efficiency)."""
+    from tests.fixtures.data import TEST_DJI_SRT_PATH
+
+    path = Path(TEST_DJI_SRT_PATH)
+    if not path.exists():
+        pytest.skip(f"Integration test DJI SRT not found: {path}")
+    return path

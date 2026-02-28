@@ -81,7 +81,7 @@ class FileInfo(BaseModel):
 
     filename: str
     file_path: str
-    file_type: str  # "video", "gpx", "fit"
+    file_type: str  # "video", "gpx", "fit", "srt"
     role: FileRole
     video_metadata: VideoMetadata | None = None
     gpx_fit_metadata: GpxFitMetadata | None = None

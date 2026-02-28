@@ -8,6 +8,7 @@ import shlex
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import Path
 
 from PIL import Image, ImageFont
@@ -16,6 +17,7 @@ from telemetry_studio.config import settings
 from telemetry_studio.constants import (
     DEFAULT_GPS_DOP_MAX,
     DEFAULT_GPS_SPEED_MAX,
+    DEFAULT_GPS_TARGET_HZ,
     DEFAULT_UNITS_ALTITUDE,
     DEFAULT_UNITS_DISTANCE,
     DEFAULT_UNITS_SPEED,
@@ -285,6 +287,62 @@ def _extract_video_frame(file_path: Path, time_ms: int, width: int, height: int)
     return None
 
 
+def _load_external_timeseries(filepath: Path, units):
+    """Load telemetry from GPX, FIT, or SRT file into a Timeseries.
+
+    Automatically thins high-frequency data (e.g. DJI SRT at 30fps)
+    to DEFAULT_GPS_TARGET_HZ (1 Hz) for optimal rendering performance.
+    """
+    target_hz = DEFAULT_GPS_TARGET_HZ
+
+    if filepath.suffix.lower() == ".srt":
+        from telemetry_studio.services.srt_parser import (
+            calc_sample_rate,
+            estimate_srt_fps,
+            load_srt_timeseries,
+            parse_srt,
+        )
+
+        points = parse_srt(filepath)
+        source_hz = estimate_srt_fps(filepath, points=points)
+        sample_rate = calc_sample_rate(source_hz, target_hz)
+
+        return load_srt_timeseries(filepath, units, sample_rate, points=points)
+
+    from gopro_overlay.loading import load_external
+
+    timeseries = load_external(filepath, units)
+    return _thin_timeseries(timeseries, target_hz)
+
+
+def _thin_timeseries(timeseries, target_hz: int):
+    """Thin a Timeseries to approximately target_hz points per second.
+
+    Uses uniform time-based sampling. If source data is already at or below
+    the target rate, returns unchanged.
+    """
+    entries = timeseries.items()
+    if len(entries) < 2:
+        return timeseries
+
+    # Estimate source rate from timestamps
+    total_seconds = (entries[-1].dt - entries[0].dt).total_seconds()
+    if total_seconds <= 0:
+        return timeseries
+
+    source_hz = len(entries) / total_seconds
+    if source_hz <= target_hz * 1.5:  # Allow some tolerance
+        return timeseries
+
+    # Calculate step and sample
+    step = max(1, round(source_hz / target_hz))
+    sampled = entries[::step]
+
+    new_ts = type(timeseries)()
+    new_ts.add(*sampled)
+    return new_ts
+
+
 def render_preview(
     file_path: Path,
     layout: str,
@@ -309,7 +367,7 @@ def render_preview(
     from gopro_overlay.gpmd_filters import standard as gps_filter_standard
     from gopro_overlay.layout import Overlay
     from gopro_overlay.layout_xml import Converters, layout_from_xml, load_xml_layout
-    from gopro_overlay.loading import GoproLoader, load_external
+    from gopro_overlay.loading import GoproLoader
     from gopro_overlay.privacy import NoPrivacyZone
     from gopro_overlay.timeunits import timeunits
     from gopro_overlay.units import units
@@ -397,15 +455,15 @@ def render_preview(
                 framemeta = gopro.framemeta
             except (OSError, TypeError, ValueError) as e:
                 if gpx_path:
-                    # Video has no GPS — use external GPX/FIT file
-                    timeseries = load_external(gpx_path, units)
+                    # Video has no GPS — use external GPX/FIT/SRT file
+                    timeseries = _load_external_timeseries(gpx_path, units)
                     framemeta = timeseries_to_framemeta(timeseries, units)
                 else:
                     raise ValueError("Video file does not contain GPS metadata") from e
 
         else:
-            # Load GPX or FIT file
-            timeseries = load_external(file_path, units)
+            # Load GPX, FIT, or SRT file
+            timeseries = _load_external_timeseries(file_path, units)
             framemeta = timeseries_to_framemeta(timeseries, units)
 
         # Parse the layout XML
@@ -538,7 +596,7 @@ def _render_layout_with_data(
     from gopro_overlay.gpmd_filters import standard as gps_filter_standard
     from gopro_overlay.layout import Overlay
     from gopro_overlay.layout_xml import Converters, layout_from_xml
-    from gopro_overlay.loading import GoproLoader, load_external
+    from gopro_overlay.loading import GoproLoader
     from gopro_overlay.privacy import NoPrivacyZone
     from gopro_overlay.timeunits import timeunits
     from gopro_overlay.units import units
@@ -602,12 +660,12 @@ def _render_layout_with_data(
                 framemeta = gopro.framemeta
             except (OSError, TypeError, ValueError) as e:
                 if gpx_path:
-                    timeseries = load_external(gpx_path, units)
+                    timeseries = _load_external_timeseries(gpx_path, units)
                     framemeta = timeseries_to_framemeta(timeseries, units)
                 else:
                     raise ValueError(f"Could not load GPS data from video: {e}. Try adding a GPX/FIT file.") from e
         else:
-            timeseries = load_external(file_path, units)
+            timeseries = _load_external_timeseries(file_path, units)
             framemeta = timeseries_to_framemeta(timeseries, units)
 
         create_widgets = layout_from_xml(
@@ -665,6 +723,43 @@ def _render_layout_placeholder(xml_content: str, width: int, height: int) -> byt
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
     return buffer.getvalue()
+
+
+def _convert_srt_to_gpx(srt_path: Path, tz_offset: timedelta | None = None) -> str:
+    """Convert an SRT file to GPX, parsing once and reusing points.
+
+    Uses a unique temp file path to avoid race conditions in concurrent renders.
+
+    Returns:
+        Path string to the generated GPX file
+    """
+    import uuid
+
+    from telemetry_studio.services.srt_parser import (
+        calc_sample_rate,
+        estimate_srt_fps,
+        parse_srt,
+        srt_to_gpx_file,
+    )
+
+    points = parse_srt(srt_path)
+    source_hz = estimate_srt_fps(srt_path, points=points)
+    sample_rate = calc_sample_rate(source_hz, DEFAULT_GPS_TARGET_HZ)
+
+    gpx_output = Path(tempfile.gettempdir()) / f"telemetry_studio_srt_{srt_path.stem}_{uuid.uuid4().hex[:8]}.gpx"
+    srt_to_gpx_file(srt_path, gpx_output, sample_rate, tz_offset=tz_offset, points=points)
+    return str(gpx_output)
+
+
+def _estimate_srt_tz_offset(srt_path: Path, video_path: Path) -> tuple[timedelta | None, str]:
+    """Estimate timezone offset for SRT file and detect mtime role.
+
+    Returns:
+        Tuple of (offset, mtime_role) where mtime_role is "start" or "end".
+    """
+    from telemetry_studio.services.srt_parser import estimate_tz_offset
+
+    return estimate_tz_offset(srt_path, video_path)
 
 
 def generate_cli_command(
@@ -731,32 +826,56 @@ def generate_cli_command(
             layout_info = get_available_layouts()[0]
         canvas_width, canvas_height = layout_info.width, layout_info.height
 
+    # For DJI SRT: auto-apply file-modified time alignment.
+    # SRT telemetry comes from the same recording — time alignment is determined
+    # automatically from the video's mtime vs SRT timestamps.
+    # mtime_role tracks whether mtime = start or end of recording (varies by DJI model).
+    srt_mtime_role = "start"
+    if secondary and secondary.file_type == "srt" and primary_type == "video" and not video_time_alignment:
+        video_time_alignment = "file-modified"
+
+    # If secondary is SRT, convert to GPX for CLI compatibility
+    secondary_gpx_path = None
+    if secondary and secondary.file_type == "srt":
+        tz_offset, srt_mtime_role = _estimate_srt_tz_offset(Path(secondary.file_path), Path(primary_path))
+        secondary_gpx_path = _convert_srt_to_gpx(Path(secondary.file_path), tz_offset=tz_offset)
+        logger.info(f"Converted secondary SRT to GPX: {secondary_gpx_path}")
+
+    # Resolve secondary file path (use converted GPX if SRT was converted)
+    secondary_path = secondary_gpx_path or (secondary.file_path if secondary else None)
+
     # Determine mode and build command
     if secondary and primary_type == "video":
         # Mode 2: Video + GPX/FIT merge
         # Note: --video-time-start only works with --use-gpx-only in gopro-dashboard.
         # When time alignment is requested, use --use-gpx-only mode instead of --gpx-merge.
         if video_time_alignment:
+            # For SRT: choose --video-time-start or --video-time-end based on detected mtime role.
+            # Different DJI models set mtime at recording start or end.
+            if secondary.file_type == "srt" and srt_mtime_role == "end":
+                time_arg = f"--video-time-end {shlex.quote(video_time_alignment)}"
+            else:
+                time_arg = f"--video-time-start {shlex.quote(video_time_alignment)}"
             cmd_parts = [
                 "gopro-dashboard.py",
                 shlex.quote(primary_path),
                 shlex.quote(output_file),
                 "--use-gpx-only",
-                f"--gpx {shlex.quote(secondary.file_path)}",
-                f"--video-time-start {shlex.quote(video_time_alignment)}",
+                f"--gpx {shlex.quote(secondary_path)}",
+                time_arg,
             ]
         else:
             cmd_parts = [
                 "gopro-dashboard.py",
                 shlex.quote(primary_path),
                 shlex.quote(output_file),
-                f"--gpx {shlex.quote(secondary.file_path)}",
+                f"--gpx {shlex.quote(secondary_path)}",
                 f"--gpx-merge {shlex.quote(gpx_merge_mode)}",
             ]
         if canvas_width and canvas_height:
             cmd_parts.append(f"--overlay-size {canvas_width}x{canvas_height}")
-    elif primary_type in ("gpx", "fit"):
-        # Mode 3: GPX/FIT only (overlay-only mode)
+    elif primary_type in ("gpx", "fit", "srt"):
+        # Mode 3: GPX/FIT/SRT only (overlay-only mode)
         # Get overlay size from layout
         layout_info = None
         for info in get_available_layouts():
@@ -766,11 +885,16 @@ def generate_cli_command(
         if layout_info is None:
             layout_info = get_available_layouts()[0]
 
+        # Convert SRT to GPX for CLI compatibility
+        gpx_primary_path = primary_path
+        if primary_type == "srt":
+            gpx_primary_path = _convert_srt_to_gpx(Path(primary_path))
+
         cmd_parts = [
             "gopro-dashboard.py",
             shlex.quote(output_file),
             "--use-gpx-only",
-            f"--gpx {shlex.quote(primary_path)}",
+            f"--gpx {shlex.quote(gpx_primary_path)}",
             f"--overlay-size {layout_info.width}x{layout_info.height}",
         ]
         if video_time_alignment:

@@ -94,9 +94,9 @@ class FileManager:
         if role in existing_roles:
             raise ValueError(f"Session already has a {role.value} file")
 
-        # Secondary must be gpx/fit
-        if role == FileRole.SECONDARY and file_type not in ("gpx", "fit"):
-            raise ValueError("Secondary file must be GPX or FIT")
+        # Secondary must be gpx/fit/srt
+        if role == FileRole.SECONDARY and file_type not in ("gpx", "fit", "srt"):
+            raise ValueError("Secondary file must be GPX, FIT, or SRT")
 
         # Can only add secondary if primary is video
         if role == FileRole.SECONDARY:
@@ -178,8 +178,8 @@ class FileManager:
         if not existing_primary:
             raise ValueError("No primary file to demote")
 
-        if existing_primary.file_type not in ("gpx", "fit"):
-            raise ValueError("Can only promote when existing primary is GPX/FIT")
+        if existing_primary.file_type not in ("gpx", "fit", "srt"):
+            raise ValueError("Can only promote when existing primary is GPX/FIT/SRT")
 
         # Demote existing PRIMARY to SECONDARY
         existing_primary.role = FileRole.SECONDARY

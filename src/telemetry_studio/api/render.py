@@ -509,6 +509,8 @@ async def start_batch_render(request: BatchRenderRequest, background_tasks: Back
             file_type = "gpx"
         elif suffix == ".fit":
             file_type = "fit"
+        elif suffix == ".srt":
+            file_type = "srt"
         else:
             logger.warning(f"Batch: skipping unsupported file type: {video_path}")
             skipped_files.append(str(video_path))
@@ -532,7 +534,7 @@ async def start_batch_render(request: BatchRenderRequest, background_tasks: Back
                 gpx_path = Path(file_input.gpx_path)
                 if gpx_path.exists():
                     gpx_suffix = gpx_path.suffix.lower()
-                    gpx_type = "gpx" if gpx_suffix == ".gpx" else "fit"
+                    gpx_type = {".gpx": "gpx", ".fit": "fit", ".srt": "srt"}.get(gpx_suffix, "gpx")
                     file_manager.add_file(
                         session_id=session_id,
                         filename=gpx_path.name,

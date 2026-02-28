@@ -36,8 +36,7 @@ class GPSQualityIndicator {
     }
 
     _update() {
-        const primaryFile = this.state.getPrimaryFile();
-        const gpsQuality = primaryFile?.gps_quality;
+        const gpsQuality = this._getGpsQuality();
 
         if (!gpsQuality) {
             this.indicator.style.display = 'none';
@@ -46,6 +45,13 @@ class GPSQualityIndicator {
 
         this.indicator.style.display = 'inline-flex';
         this._renderIndicator(gpsQuality);
+    }
+
+    _getGpsQuality() {
+        const primaryFile = this.state.getPrimaryFile();
+        if (primaryFile?.gps_quality) return primaryFile.gps_quality;
+        const secondaryFile = this.state.getSecondaryFile();
+        return secondaryFile?.gps_quality || null;
     }
 
     _renderIndicator(quality) {
@@ -60,7 +66,7 @@ class GPSQualityIndicator {
 
         if (quality.quality_score !== 'no_signal') {
             tooltipHtml += `
-                <br>DOP avg: ${quality.dop_mean?.toFixed(2) || 'N/A'}
+                <br>DOP avg: ${quality.dop_mean != null ? quality.dop_mean.toFixed(2) : '—'}
                 <br>Lock rate: ${quality.lock_rate}%
                 <br>Usable: ${quality.usable_percentage}%
             `;
@@ -89,8 +95,7 @@ class GPSQualityIndicator {
      * Get current quality score
      */
     getQualityScore() {
-        const primaryFile = this.state.getPrimaryFile();
-        return primaryFile?.gps_quality?.quality_score || null;
+        return this._getGpsQuality()?.quality_score || null;
     }
 }
 

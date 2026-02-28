@@ -147,8 +147,8 @@ class TestFileManagerFiles:
                 role=FileRole.SECONDARY,
             )
 
-    def test_add_secondary_must_be_gpx_fit(self, clean_file_manager, temp_dir, sample_video_metadata):
-        """Secondary file must be GPX or FIT."""
+    def test_add_secondary_must_be_gpx_fit_srt(self, clean_file_manager, temp_dir, sample_video_metadata):
+        """Secondary file must be GPX, FIT, or SRT."""
         session_id = clean_file_manager.create_session()
 
         # Add primary video
@@ -166,7 +166,7 @@ class TestFileManagerFiles:
         # Try to add another video as secondary
         video_file2 = temp_dir / "test2.mp4"
         video_file2.write_bytes(b"fake video 2")
-        with pytest.raises(ValueError, match="Secondary file must be GPX or FIT"):
+        with pytest.raises(ValueError, match="Secondary file must be GPX, FIT, or SRT"):
             clean_file_manager.add_file(
                 session_id=session_id,
                 filename="test2.mp4",

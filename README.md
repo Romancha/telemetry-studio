@@ -10,7 +10,8 @@ A visual web interface for creating video overlays with GPS telemetry data. Wrap
 - **Quick Mode** — Select from predefined layouts, customize units and map styles
 - **Advanced Mode** — Visual drag-and-drop editor for creating custom overlay layouts
 - **Live Preview** — See your overlay in real-time as you configure it
-- **Non-GoPro Video Support** — Use any video with external GPX/FIT files for GPS data
+- **DJI Drone Support** — Automatic SRT telemetry parsing with timezone and time alignment auto-detection
+- **Non-GoPro Video Support** — Use any video with external GPX/FIT/SRT files for GPS data
 - **Vertical Video Support** — Automatic rotation detection and correct overlay rendering
 - **GPS Quality Analysis** — Automatic signal quality check with warnings before rendering
 - **Template Management** — Save and load custom templates
@@ -30,6 +31,12 @@ Simple configuration with predefined layouts. Perfect for quick renders.
 Full visual editor with drag-and-drop widgets. Create custom layouts with complete control.
 
 ![Advanced Mode](docs/images/advanced_mode.jpg)
+
+### DJI Drone Support
+
+Use DJI drone videos with SRT telemetry files. Timezone offset and time alignment are automatically detected from video metadata, supporting different DJI models and firmware versions.
+
+![DJI Drone Support](docs/images/dji_drone.jpg)
 
 ### External GPX & Vertical Video
 
@@ -79,7 +86,7 @@ Then open http://localhost:8000 in your browser.
 | Type | Formats | Description |
 |------|---------|-------------|
 | Video | `.mp4`, `.mov`, `.avi` | Video files (GoPro files may contain embedded GPS) |
-| GPS Data | `.gpx`, `.fit` | External GPS tracks (optional) |
+| GPS Data | `.gpx`, `.fit`, `.srt` | External GPS tracks — GPX, FIT, or DJI SRT telemetry (optional) |
 
 ## Configuration
 

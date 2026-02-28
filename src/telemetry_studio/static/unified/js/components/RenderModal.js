@@ -133,9 +133,10 @@ class RenderModal {
 
     async startRender(config) {
         try {
-            // Check GPS quality and warn if poor
+            // Check GPS quality and warn if poor (check primary then secondary)
             const primaryFile = this.state.getPrimaryFile?.();
-            const gpsQuality = primaryFile?.gps_quality;
+            const secondaryFile = this.state.getSecondaryFile?.();
+            const gpsQuality = primaryFile?.gps_quality || secondaryFile?.gps_quality;
 
             if (GPSWarningModal.shouldWarn(gpsQuality)) {
                 const proceed = await window.gpsWarningModal.show(gpsQuality);

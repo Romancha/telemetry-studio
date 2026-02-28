@@ -1,5 +1,26 @@
 # Release Notes
 
+## Version 0.5.0 — 28 Feb 2026
+
+### 🎉 Major Features
+
+**DJI Drone Support**
+
+Full support for DJI drone video files with SRT telemetry data.
+
+- **SRT telemetry parsing** - Parse DJI subtitle files (.srt) containing per-frame GPS coordinates, altitude, and camera metadata
+- **Automatic timezone correction** - Detect timezone offset between SRT local timestamps and real UTC using video file modification time
+- **Auto-detection of mtime role** - Automatically determines whether video file mtime represents the start or end of recording
+- **Auto-detection of SRT files** - When a DJI video is selected, the matching `.SRT` file is automatically found and loaded
+- **SRT as primary file** - Use SRT files directly in overlay-only mode (no video required)
+
+### ✨ Improvements
+
+- GPS quality analysis now works for external GPX and FIT telemetry files
+- Secondary file validation accepts SRT alongside GPX and FIT formats
+
+---
+
 ## Version 0.4.1 — 28 Feb 2026
 
 ### ✨ Improvements

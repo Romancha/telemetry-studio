@@ -86,11 +86,20 @@ def extract_video_metadata(file_path: Path) -> VideoMetadata | None:
 
 
 def extract_gpx_fit_metadata(file_path: Path) -> GpxFitMetadata | None:
-    """Extract metadata from a GPX or FIT file."""
-    from gopro_overlay.loading import load_external
-    from gopro_overlay.units import units
-
+    """Extract metadata from a GPX, FIT, or SRT file."""
     try:
+        if file_path.suffix.lower() == ".srt":
+            from telemetry_studio.services.srt_parser import get_srt_metadata
+
+            meta = get_srt_metadata(file_path)
+            return GpxFitMetadata(
+                gps_point_count=meta["gps_point_count"],
+                duration_seconds=meta["duration_seconds"],
+            )
+
+        from gopro_overlay.loading import load_external
+        from gopro_overlay.units import units
+
         timeseries = load_external(file_path, units)
 
         # Count GPS points
@@ -115,4 +124,4 @@ def extract_gpx_fit_metadata(file_path: Path) -> GpxFitMetadata | None:
 def get_file_type(file_path: Path) -> str:
     """Determine the file type from extension."""
     suffix = file_path.suffix.lower()
-    return {".mp4": "video", ".mov": "video", ".gpx": "gpx", ".fit": "fit"}.get(suffix, "unknown")
+    return {".mp4": "video", ".mov": "video", ".gpx": "gpx", ".fit": "fit", ".srt": "srt"}.get(suffix, "unknown")

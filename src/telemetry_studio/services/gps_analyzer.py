@@ -97,6 +97,96 @@ def analyze_gps_quality(file_path: Path) -> GPSQualityReport | None:
         return None
 
 
+def analyze_external_gps_quality(file_path: Path) -> GPSQualityReport | None:
+    """Analyze GPS quality from an external telemetry file (GPX, FIT, or SRT).
+
+    External files don't have DOP data like GoPro GPMF, so quality is assessed
+    based on point count, coordinate validity, and available metadata.
+
+    Args:
+        file_path: Path to the GPX, FIT, or SRT file
+
+    Returns:
+        GPSQualityReport with quality analysis, or None if analysis fails
+    """
+    try:
+        suffix = file_path.suffix.lower()
+
+        if suffix == ".srt":
+            # SRT files have no DOP, satellite count, or fix type data —
+            # quality analysis would be meaningless
+            return None
+
+        from gopro_overlay.loading import load_external
+        from gopro_overlay.units import units
+
+        timeseries = load_external(file_path, units)
+        return _analyze_timeseries_quality(timeseries)
+
+    except Exception as e:
+        logger.error(f"Error analyzing external GPS quality from {file_path}: {e}")
+        return None
+
+
+def _analyze_timeseries_quality(timeseries) -> GPSQualityReport:
+    """Analyze GPS quality from a gopro_overlay Timeseries (GPX/FIT)."""
+    entries = timeseries.items()
+    total_points = len(entries)
+
+    if total_points == 0:
+        return GPSQualityReport(
+            total_points=0,
+            locked_points=0,
+            lock_rate=0.0,
+            quality_score="no_signal",
+            usable_percentage=0.0,
+            warnings=["No GPS data points found"],
+        )
+
+    # Collect DOP values if available
+    dop_values: list[float] = []
+    locked_points = 0
+
+    for entry in entries:
+        if entry.point is not None:
+            locked_points += 1
+
+        if entry.dop is not None:
+            dop_val = (
+                entry.dop.magnitude if hasattr(entry.dop, "magnitude") else float(entry.dop)
+            )
+            dop_values.append(dop_val)
+
+    if dop_values:
+        # Have DOP data — use full analysis
+        return _build_report(total_points, locked_points, dop_values)
+
+    # No DOP data — assess based on point count and validity
+    lock_rate = (locked_points / total_points) * 100 if total_points > 0 else 0.0
+
+    if lock_rate == 0:
+        quality_score: GPSQualityScore = "no_signal"
+    elif lock_rate >= 90:
+        quality_score = "good"
+    else:
+        quality_score = "ok"
+
+    warnings: list[str] = []
+    if quality_score == "no_signal":
+        warnings.append("No valid GPS coordinates found in file")
+    elif lock_rate < 90:
+        warnings.append(f"Only {lock_rate:.0f}% of points have valid coordinates")
+
+    return GPSQualityReport(
+        total_points=total_points,
+        locked_points=locked_points,
+        lock_rate=round(lock_rate, 1),
+        quality_score=quality_score,
+        usable_percentage=round(lock_rate, 1),
+        warnings=warnings,
+    )
+
+
 def _build_report(
     total_points: int, locked_points: int, dop_values: list[float]
 ) -> GPSQualityReport:

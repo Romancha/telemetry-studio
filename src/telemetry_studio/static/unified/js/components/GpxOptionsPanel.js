@@ -96,6 +96,7 @@ class GpxOptionsPanel {
     _updateVisibility() {
         const isMergeMode = this.state.isMergeMode();
         const isGpxOnlyMode = this.state.isGpxOnlyMode();
+        const isSrt = this.state.isSrtSecondary();
 
         // Show panel if either mode is active
         if (isMergeMode || isGpxOnlyMode) {
@@ -105,12 +106,18 @@ class GpxOptionsPanel {
             return;
         }
 
-        // Show appropriate options based on mode
-        this.timeAlignmentGroup.style.display = 'block';
-        if (isMergeMode) {
-            this.mergeModeGroup.style.display = 'block';
-        } else {
+        if (isSrt) {
+            // DJI SRT: time sync is automatic, no user config needed
             this.mergeModeGroup.style.display = 'none';
+            this.timeAlignmentGroup.style.display = 'none';
+        } else {
+            // Show appropriate options based on mode
+            this.timeAlignmentGroup.style.display = 'block';
+            if (isMergeMode) {
+                this.mergeModeGroup.style.display = 'block';
+            } else {
+                this.mergeModeGroup.style.display = 'none';
+            }
         }
     }
 

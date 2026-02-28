@@ -72,6 +72,7 @@ DEFAULT_GPX_MERGE_MODE = "OVERWRITE"
 
 DEFAULT_GPS_DOP_MAX = 10.0  # GPS dilution of precision max
 DEFAULT_GPS_SPEED_MAX = 200.0  # Max speed in kph to filter outliers
+DEFAULT_GPS_TARGET_HZ = 1  # Target GPS sampling rate in Hz (1 = 1 point/sec)
 
 # =============================================================================
 # GPS QUALITY THRESHOLDS

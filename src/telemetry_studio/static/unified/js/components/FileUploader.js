@@ -67,18 +67,18 @@ class FileUploader {
             <div class="file-field" id="gps-field">
                 <div class="file-field-header">
                     <span class="file-field-label">GPS Data</span>
-                    <span class="file-field-hint">GPX/FIT (optional)</span>
+                    <span class="file-field-hint">GPX/FIT/SRT (optional)</span>
                 </div>
                 ${this.localMode ? `
                     <div class="file-field-input-row">
-                        <input type="text" id="gps-path-input" class="file-path-input" placeholder="/path/to/track.gpx">
+                        <input type="text" id="gps-path-input" class="file-path-input" placeholder="/path/to/track.gpx or .srt">
                         <button id="gps-load-btn" class="btn btn-sm btn-primary">Load</button>
                     </div>
                 ` : `
                     <div id="gps-drop-zone" class="file-drop-zone">
-                        <span class="drop-zone-text">Drop GPX/FIT or click</span>
+                        <span class="drop-zone-text">Drop GPX/FIT/SRT or click</span>
                     </div>
-                    <input type="file" id="gps-file-input" accept=".gpx,.fit" class="visually-hidden">
+                    <input type="file" id="gps-file-input" accept=".gpx,.fit,.srt" class="visually-hidden">
                 `}
                 <div id="gps-file-info" class="file-info" style="display: none;">
                     <span class="file-info-name"></span>
@@ -199,17 +199,19 @@ class FileUploader {
         const hasVideo = this.state.getPrimaryFile()?.file_type === 'video';
         const hasGps = this.state.getSecondaryFile() ||
                        (this.state.getPrimaryFile()?.file_type === 'gpx' ||
-                        this.state.getPrimaryFile()?.file_type === 'fit');
+                        this.state.getPrimaryFile()?.file_type === 'fit' ||
+                        this.state.getPrimaryFile()?.file_type === 'srt');
 
         const hasGpsPrimary = !hasVideo &&
             (this.state.getPrimaryFile()?.file_type === 'gpx' ||
-             this.state.getPrimaryFile()?.file_type === 'fit');
+             this.state.getPrimaryFile()?.file_type === 'fit' ||
+             this.state.getPrimaryFile()?.file_type === 'srt');
 
         try {
             let response;
 
             if (type === 'video') {
-                // If session has GPX/FIT as primary, send session_id to reuse session
+                // If session has GPX/FIT/SRT as primary, send session_id to reuse session
                 const body = { file_path: path };
                 if (hasGpsPrimary && this.state.sessionId) {
                     body.session_id = this.state.sessionId;
@@ -266,7 +268,7 @@ class FileUploader {
     }
 
     async _uploadFile(file, type) {
-        const validExtensions = type === 'video' ? ['.mp4', '.mov'] : ['.gpx', '.fit'];
+        const validExtensions = type === 'video' ? ['.mp4', '.mov'] : ['.gpx', '.fit', '.srt'];
         const ext = '.' + file.name.split('.').pop().toLowerCase();
 
         if (!validExtensions.includes(ext)) {
@@ -277,7 +279,8 @@ class FileUploader {
         const hasVideo = this.state.getPrimaryFile()?.file_type === 'video';
         const hasGpsPrimary = !hasVideo &&
             (this.state.getPrimaryFile()?.file_type === 'gpx' ||
-             this.state.getPrimaryFile()?.file_type === 'fit');
+             this.state.getPrimaryFile()?.file_type === 'fit' ||
+             this.state.getPrimaryFile()?.file_type === 'srt');
 
         try {
             const formData = new FormData();
@@ -355,7 +358,7 @@ class FileUploader {
                 } catch (error) {
                     console.error('Failed to remove GPS file:', error);
                 }
-            } else if (primary?.file_type === 'gpx' || primary?.file_type === 'fit') {
+            } else if (primary?.file_type === 'gpx' || primary?.file_type === 'fit' || primary?.file_type === 'srt') {
                 // GPS is primary (gpx-only mode) - clear session
                 this.state.clearSession();
             }
@@ -369,7 +372,7 @@ class FileUploader {
         // Determine what's loaded
         const videoFile = primary?.file_type === 'video' ? primary : null;
         const gpsFile = secondary ||
-                        (primary?.file_type === 'gpx' || primary?.file_type === 'fit' ? primary : null);
+                        (primary?.file_type === 'gpx' || primary?.file_type === 'fit' || primary?.file_type === 'srt' ? primary : null);
 
         // Update Video field
         this._updateFieldUI('video', videoFile);

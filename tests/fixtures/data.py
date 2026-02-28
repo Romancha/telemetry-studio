@@ -45,6 +45,8 @@ TEST_VIDEO_PATH = str(Path(__file__).parent / "videos" / "raw_gopro_with_telemet
 TEST_VIDEO_PATH_2 = str(Path(__file__).parent / "videos" / "raw_gopro_with_telemetry_2.MP4")
 TEST_MOV_VIDEO_PATH = str(Path(__file__).parent / "videos" / "run_video_without_telemetry.MOV")
 TEST_RUN_GPX_PATH = str(Path(__file__).parent / "videos" / "run_activity_21671656806.gpx")
+TEST_DJI_VIDEO_PATH = str(Path(__file__).parent / "videos" / "DJI_20250721102743_0001_D.MP4")
+TEST_DJI_SRT_PATH = str(Path(__file__).parent / "videos" / "DJI_20250721102743_0001_D.SRT")
 
 # Allowed extensions for upload
 ALLOWED_VIDEO_EXTENSIONS = [".mp4", ".MP4", ".mov", ".MOV"]

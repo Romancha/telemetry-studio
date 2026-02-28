@@ -15,7 +15,7 @@ from telemetry_studio.models.schemas import (
     UploadResponse,
 )
 from telemetry_studio.services.file_manager import file_manager
-from telemetry_studio.services.gps_analyzer import analyze_gps_quality
+from telemetry_studio.services.gps_analyzer import analyze_external_gps_quality, analyze_gps_quality
 from telemetry_studio.services.metadata import (
     extract_gpx_fit_metadata,
     extract_video_metadata,
@@ -74,7 +74,7 @@ async def use_local_file(request: LocalFileRequest) -> UploadResponse:
     session_id = request.session_id
     if session_id and file_manager.session_exists(session_id):
         existing_primary = file_manager.get_primary_file(session_id)
-        if existing_primary and existing_primary.file_type in ("gpx", "fit") and file_type == "video":
+        if existing_primary and existing_primary.file_type in ("gpx", "fit", "srt") and file_type == "video":
             reuse_session = True
 
     if not reuse_session:
@@ -104,7 +104,7 @@ async def use_local_file(request: LocalFileRequest) -> UploadResponse:
                 logger.warning(f"Failed to analyze GPS quality: {e}")
                 # Don't fail the upload, just skip GPS quality analysis
 
-    elif file_type in ("gpx", "fit"):
+    elif file_type in ("gpx", "fit", "srt"):
         try:
             gpx_fit_metadata = extract_gpx_fit_metadata(file_path)
         except Exception as e:
@@ -115,6 +115,12 @@ async def use_local_file(request: LocalFileRequest) -> UploadResponse:
                 status_code=400,
                 detail=f"Could not read {file_type.upper()} file. Ensure it's a valid format.",
             ) from e
+
+        # Analyze GPS quality for external telemetry file
+        try:
+            gps_quality = analyze_external_gps_quality(file_path)
+        except Exception as e:
+            logger.warning(f"Failed to analyze GPS quality: {e}")
 
     # If reusing session, promote video to primary (demote GPX/FIT to secondary)
     if reuse_session:
@@ -147,10 +153,57 @@ async def use_local_file(request: LocalFileRequest) -> UploadResponse:
         gps_quality=gps_quality,
     )
 
+    # Auto-detect matching SRT/GPX/FIT file for video (e.g. DJI_0001.MP4 → DJI_0001.SRT)
+    files = [file_info]
+    if file_type == "video" and settings.local_mode:
+        auto_secondary = _find_matching_telemetry(file_path)
+        if auto_secondary:
+            try:
+                secondary_metadata = extract_gpx_fit_metadata(auto_secondary)
+                secondary_type = get_file_type(auto_secondary)
+                secondary_quality = None
+                try:
+                    secondary_quality = analyze_external_gps_quality(auto_secondary)
+                except Exception as e:
+                    logger.warning(f"Failed to analyze GPS quality for auto-detected file: {e}")
+                secondary_info = file_manager.add_file(
+                    session_id=session_id,
+                    filename=auto_secondary.name,
+                    file_path=auto_secondary,
+                    file_type=secondary_type,
+                    role=FileRole.SECONDARY,
+                    gpx_fit_metadata=secondary_metadata,
+                    gps_quality=secondary_quality,
+                )
+                files.append(secondary_info)
+                logger.info(f"Auto-detected telemetry file: {auto_secondary.name}")
+            except Exception as e:
+                logger.warning(f"Failed to auto-load telemetry file {auto_secondary}: {e}")
+
     return UploadResponse(
         session_id=session_id,
-        files=[file_info],
+        files=files,
     )
+
+
+def _find_matching_telemetry(video_path: Path) -> Path | None:
+    """Find a matching telemetry file (SRT, GPX, FIT) next to the video.
+
+    DJI drones create files like:
+        DJI_20240807123424_0002_D.MP4
+        DJI_20240807123424_0002_D.SRT
+
+    Checks for .srt first (DJI), then .gpx, then .fit.
+    """
+    for ext in (".srt", ".gpx", ".fit"):
+        candidate = video_path.with_suffix(ext)
+        if candidate.exists():
+            return candidate
+        # Also try uppercase extension
+        candidate = video_path.with_suffix(ext.upper())
+        if candidate.exists():
+            return candidate
+    return None
 
 
 @router.post("/local-file-secondary", response_model=UploadResponse)
@@ -180,10 +233,10 @@ async def use_local_secondary_file(request: SecondaryFileRequest) -> UploadRespo
 
     # Validate extension - only GPX/FIT allowed for secondary
     extension = file_path.suffix.lower()
-    if extension not in (".gpx", ".fit"):
+    if extension not in (".gpx", ".fit", ".srt"):
         raise HTTPException(
             status_code=400,
-            detail="Secondary file must be GPX or FIT",
+            detail="Secondary file must be GPX, FIT, or SRT",
         )
 
     # Determine file type and extract metadata
@@ -199,6 +252,13 @@ async def use_local_secondary_file(request: SecondaryFileRequest) -> UploadRespo
             detail=f"Could not read {file_type.upper()} file. Ensure it's a valid format.",
         ) from e
 
+    # Analyze GPS quality for external telemetry file
+    gps_quality = None
+    try:
+        gps_quality = analyze_external_gps_quality(file_path)
+    except Exception as e:
+        logger.warning(f"Failed to analyze GPS quality for secondary file: {e}")
+
     # Add file to session as secondary
     try:
         file_manager.add_file(
@@ -208,6 +268,7 @@ async def use_local_secondary_file(request: SecondaryFileRequest) -> UploadRespo
             file_type=file_type,
             role=FileRole.SECONDARY,
             gpx_fit_metadata=gpx_fit_metadata,
+            gps_quality=gps_quality,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -257,7 +318,7 @@ async def upload_file(
     if session_id and file_manager.session_exists(session_id):
         existing_primary = file_manager.get_primary_file(session_id)
         file_type_preview = get_file_type(Path(file.filename))
-        if existing_primary and existing_primary.file_type in ("gpx", "fit") and file_type_preview == "video":
+        if existing_primary and existing_primary.file_type in ("gpx", "fit", "srt") and file_type_preview == "video":
             reuse_session = True
 
     if reuse_session:
@@ -298,7 +359,7 @@ async def upload_file(
                 logger.warning(f"Failed to analyze GPS quality: {e}")
                 # Don't fail the upload, just skip GPS quality analysis
 
-    elif file_type in ("gpx", "fit"):
+    elif file_type in ("gpx", "fit", "srt"):
         try:
             gpx_fit_metadata = extract_gpx_fit_metadata(file_path)
         except Exception as e:
@@ -311,6 +372,12 @@ async def upload_file(
                 status_code=400,
                 detail=f"Could not read {file_type.upper()} file. Ensure it's a valid format.",
             ) from e
+
+        # Analyze GPS quality for external telemetry file
+        try:
+            gps_quality = analyze_external_gps_quality(file_path)
+        except Exception as e:
+            logger.warning(f"Failed to analyze GPS quality: {e}")
 
     # If reusing session, promote video to primary (demote GPX/FIT to secondary)
     if reuse_session:
@@ -365,10 +432,10 @@ async def upload_secondary_file(
 
     # Validate file extension - only GPX/FIT allowed
     extension = "." + file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
-    if extension not in (".gpx", ".fit"):
+    if extension not in (".gpx", ".fit", ".srt"):
         raise HTTPException(
             status_code=400,
-            detail="Secondary file must be GPX or FIT",
+            detail="Secondary file must be GPX, FIT, or SRT",
         )
 
     # Read file content
@@ -400,6 +467,13 @@ async def upload_secondary_file(
             detail=f"Could not read {file_type.upper()} file. Ensure it's a valid format.",
         ) from e
 
+    # Analyze GPS quality for external telemetry file
+    gps_quality = None
+    try:
+        gps_quality = analyze_external_gps_quality(file_path)
+    except Exception as e:
+        logger.warning(f"Failed to analyze GPS quality for secondary file: {e}")
+
     # Add file to session as secondary
     try:
         file_manager.add_file(
@@ -409,6 +483,7 @@ async def upload_secondary_file(
             file_type=file_type,
             role=FileRole.SECONDARY,
             gpx_fit_metadata=gpx_fit_metadata,
+            gps_quality=gps_quality,
         )
     except ValueError as e:
         # Remove the file

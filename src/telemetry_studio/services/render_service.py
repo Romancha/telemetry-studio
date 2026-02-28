@@ -82,6 +82,24 @@ class RenderService:
             logger.warning(f"Failed to parse GPX start time from {gpx_path}: {e}")
         return None
 
+    @staticmethod
+    def _get_srt_start_timestamp(srt_path: str) -> float | None:
+        """Extract the first GPS timestamp from a DJI SRT file as Unix timestamp.
+
+        Note: SRT timestamps are naive local time, so the returned Unix timestamp
+        treats them as local system time. This is primarily used for relative
+        time alignment, not absolute UTC positioning.
+        """
+        try:
+            from telemetry_studio.services.srt_parser import parse_srt
+
+            points = parse_srt(Path(srt_path))
+            if points:
+                return points[0].dt.timestamp()
+        except Exception as e:
+            logger.warning(f"Failed to parse SRT start time from {srt_path}: {e}")
+        return None
+
     def _needs_pillarbox(self, video_path: str, config: RenderJobConfig) -> tuple[int, int, int, int] | None:
         """Check if video needs pillarboxing to fit the canvas.
 
@@ -251,8 +269,11 @@ class RenderService:
             await _clear_current_job()
             return
 
-        # Check if video needs pillarboxing (aspect ratio mismatch with canvas)
+        # Collect temp files for cleanup
         pillarbox_temp_file = None
+        srt_gpx_temp_files = self._find_srt_gpx_temp_files(command)
+
+        # Check if video needs pillarboxing (aspect ratio mismatch with canvas)
         from telemetry_studio.services.file_manager import file_manager
 
         primary = file_manager.get_primary_file(config.session_id)
@@ -266,18 +287,26 @@ class RenderService:
                 )
                 if pillarbox_temp_file:
                     # When using file-modified time alignment with external GPX,
-                    # set pillarbox file's mtime to GPX first trackpoint time.
-                    # The original video's mtime often doesn't match GPX recording time.
+                    # preserve the original video's mtime on the pillarbox file.
+                    # For GPX/FIT: set mtime to GPX start (since video mtime may not match).
+                    # For SRT: keep original video mtime (SRT→GPX timestamps are already
+                    # corrected to UTC using the video mtime as reference).
                     if config.video_time_alignment == "file-modified":
                         secondary = file_manager.get_secondary_file(config.session_id)
+                        target_ts = None
                         if secondary and secondary.file_type in ("gpx", "fit"):
-                            gpx_start_ts = self._get_gpx_start_timestamp(secondary.file_path)
-                            if gpx_start_ts:
-                                os.utime(pillarbox_temp_file, (gpx_start_ts, gpx_start_ts))
-                                await job_manager.append_job_log(
-                                    job_id,
-                                    "Set pillarbox file mtime to GPX start time",
-                                )
+                            target_ts = self._get_gpx_start_timestamp(secondary.file_path)
+                        elif secondary and secondary.file_type == "srt":
+                            # Copy original video mtime — SRT GPX timestamps are already
+                            # adjusted to match this via estimate_tz_offset()
+                            stat = os.stat(primary.file_path)
+                            target_ts = stat.st_mtime
+                        if target_ts:
+                            os.utime(pillarbox_temp_file, (target_ts, target_ts))
+                            await job_manager.append_job_log(
+                                job_id,
+                                "Set pillarbox file mtime for time alignment",
+                            )
                     # Replace video path in command with pillarboxed version
                     command = command.replace(
                         shlex.quote(primary.file_path), shlex.quote(pillarbox_temp_file)
@@ -351,9 +380,11 @@ class RenderService:
             await job_manager.update_job_status(job_id, JobStatus.FAILED, str(e))
             logger.exception(f"Job {job_id} failed with exception")
         finally:
-            # Clean up pillarbox temp file if created
+            # Clean up temp files
             if pillarbox_temp_file:
                 self._cleanup_temp_file(pillarbox_temp_file)
+            for temp_gpx in srt_gpx_temp_files:
+                self._cleanup_temp_file(temp_gpx)
             async with self._lock:
                 self._process = None
                 self._current_job_id = None
@@ -524,8 +555,18 @@ class RenderService:
             return False
 
     @staticmethod
+    def _find_srt_gpx_temp_files(command: str) -> list[str]:
+        """Find temp GPX files generated from SRT conversion in a command string."""
+        import re as _re
+        import tempfile as _tempfile
+
+        temp_dir = _tempfile.gettempdir()
+        pattern = _re.compile(rf"{_re.escape(temp_dir)}/telemetry_studio_srt_\S+\.gpx")
+        return pattern.findall(command)
+
+    @staticmethod
     def _cleanup_temp_file(temp_path: str):
-        """Remove temporary pillarbox file."""
+        """Remove temporary file."""
         try:
             if os.path.exists(temp_path):
                 os.remove(temp_path)

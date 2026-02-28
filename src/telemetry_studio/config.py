@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     templates_dir: Path = Path.home() / ".telemetry-studio" / "templates"
 
     # Allowed file extensions
-    allowed_extensions: set[str] = {".mp4", ".mov", ".gpx", ".fit"}
+    allowed_extensions: set[str] = {".mp4", ".mov", ".gpx", ".fit", ".srt"}
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
