@@ -65,6 +65,26 @@ Process multiple videos at once with the same overlay settings.
 
 ## Installation
 
+### pipx (recommended)
+
+```bash
+# Install FFmpeg first
+# macOS:    brew install ffmpeg
+# Ubuntu:   sudo apt install ffmpeg
+# Windows:  choco install ffmpeg
+
+# Install Telemetry Studio
+pipx install telemetry-studio
+
+# Run (opens browser automatically)
+telemetry-studio
+
+# Or with custom host/port
+telemetry-studio --host 127.0.0.1 --port 8080
+```
+
+### From source
+
 ```bash
 # Install uv if not already installed
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -78,9 +98,6 @@ uv sync
 
 # Run the application
 uv run telemetry-studio
-
-# Or with custom host/port
-uv run telemetry-studio --host 127.0.0.1 --port 8080
 ```
 
 Then open http://localhost:8000 in your browser.
