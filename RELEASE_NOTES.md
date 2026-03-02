@@ -1,5 +1,20 @@
 # Release Notes
 
+## Version 0.6.1 — 02 Mar 2026
+
+### 🆕 New
+
+- **PyPI publishing** - Package can now be installed via `pipx install telemetry-studio`
+- **Auto-open browser** - Browser opens automatically when the server starts
+- **FFmpeg check at startup** - Clear error message with per-OS install instructions if FFmpeg is not found in PATH
+
+### ✨ Improvements
+
+- Clickable server URL in terminal output (`0.0.0.0` replaced with `127.0.0.1`)
+- Updated README with pipx installation instructions
+
+---
+
 ## Version 0.6.0 — 02 Mar 2026
 
 ### 🎉 Major Features
