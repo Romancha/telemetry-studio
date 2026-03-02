@@ -134,7 +134,7 @@ class TestMetricAccessorContract:
 
         # Save current state
         current_fn = layout_xml.metric_accessor_from
-        was_patched = getattr(layout_xml, "_ts_metric_patched", False)
+        _ = getattr(layout_xml, "_ts_metric_patched", False)
 
         # If patched, we need to get the original from the closure
         # Our patch wraps the original, so unknown metrics go through _original first

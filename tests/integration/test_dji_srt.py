@@ -171,10 +171,7 @@ class TestDjiSrtTimezoneOffset:
         points = parse_srt(integration_test_dji_srt)
 
         # Use first or last SRT point depending on detected mtime role
-        if mtime_role == "start":
-            corrected = points[0].dt - offset
-        else:
-            corrected = points[-1].dt - offset
+        corrected = points[0].dt - offset if mtime_role == "start" else points[-1].dt - offset
 
         # Compare as naive datetimes (both represent UTC after correction)
         from datetime import UTC

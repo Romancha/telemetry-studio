@@ -54,8 +54,9 @@ def main():
     host = args.host or settings.host
     port = args.port or settings.port
 
-    import uvicorn
     import webbrowser
+
+    import uvicorn
 
     url = f"http://{'127.0.0.1' if host == '0.0.0.0' else host}:{port}"
     print(f"Starting Telemetry Studio at {url}")

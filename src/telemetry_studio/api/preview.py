@@ -2,10 +2,9 @@
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
-
-from pathlib import Path
 
 from telemetry_studio.models.schemas import PreviewRequest, PreviewResponse
 from telemetry_studio.services.file_manager import file_manager
