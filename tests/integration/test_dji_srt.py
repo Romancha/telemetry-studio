@@ -274,7 +274,7 @@ class TestDjiSrtCliCommand:
 
         monkeypatch.setattr(fm_module, "file_manager", clean_file_manager)
 
-        cmd = generate_cli_command(
+        cmd, _ = generate_cli_command(
             session_id=session_id,
             output_file="/tmp/dji_output.mp4",
             layout="default-1920x1080",
@@ -310,7 +310,7 @@ class TestDjiSrtCliCommand:
 
         monkeypatch.setattr(fm_module, "file_manager", clean_file_manager)
 
-        cmd = generate_cli_command(
+        cmd, _ = generate_cli_command(
             session_id=session_id,
             output_file="/tmp/dji_overlay_output.mp4",
             layout="default-1920x1080",
@@ -416,7 +416,7 @@ class TestDjiSrtFullRender:
         monkeypatch.setattr(fm_module, "file_manager", clean_file_manager)
 
         output_file = render_output_dir / "dji_srt_render_output.mp4"
-        cmd = generate_cli_command(
+        cmd, _ = generate_cli_command(
             session_id=session_id,
             output_file=str(output_file),
             layout="default-1920x1080",

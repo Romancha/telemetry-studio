@@ -119,7 +119,7 @@ class TestGenerateCliCommand:
         mock_file_manager.get_primary_file.return_value = primary
         mock_file_manager.get_secondary_file.return_value = secondary
 
-        cmd = generate_cli_command(
+        cmd, _ = generate_cli_command(
             session_id="test-session",
             output_file="/tmp/output.mp4",
             layout="default-3840x2160",
@@ -143,7 +143,7 @@ class TestGenerateCliCommand:
         mock_file_manager.get_primary_file.return_value = primary
         mock_file_manager.get_secondary_file.return_value = secondary
 
-        cmd = generate_cli_command(
+        cmd, _ = generate_cli_command(
             session_id="test-session",
             output_file="/tmp/output.mp4",
             layout="default-3840x2160",
@@ -164,7 +164,7 @@ class TestGenerateCliCommand:
         mock_file_manager.get_primary_file.return_value = primary
         mock_file_manager.get_secondary_file.return_value = None
 
-        cmd = generate_cli_command(
+        cmd, _ = generate_cli_command(
             session_id="test-session",
             output_file="/tmp/output.mp4",
             layout="default-3840x2160",
@@ -184,7 +184,7 @@ class TestGenerateCliCommand:
         mock_file_manager.get_primary_file.return_value = primary
         mock_file_manager.get_secondary_file.return_value = secondary
 
-        cmd = generate_cli_command(
+        cmd, _ = generate_cli_command(
             session_id="test-session",
             output_file="/tmp/output.mp4",
             layout="default-3840x2160",
@@ -204,7 +204,7 @@ class TestGenerateCliCommand:
         mock_file_manager.get_primary_file.return_value = primary
         mock_file_manager.get_secondary_file.return_value = None
 
-        cmd = generate_cli_command(
+        cmd, _ = generate_cli_command(
             session_id="test-session",
             output_file="/tmp/output.mp4",
             layout="default-1920x1080",

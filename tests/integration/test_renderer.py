@@ -211,7 +211,7 @@ class TestRendererCLICommand:
         # Patch the singleton file_manager at the source module
         monkeypatch.setattr(fm_module, "file_manager", clean_file_manager)
 
-        cmd = generate_cli_command(
+        cmd, _ = generate_cli_command(
             session_id=session_id,
             output_file="/tmp/output.mp4",
             layout="default-1920x1080",
@@ -238,7 +238,7 @@ class TestRendererCLICommand:
 
         monkeypatch.setattr(fm_module, "file_manager", clean_file_manager)
 
-        cmd = generate_cli_command(
+        cmd, _ = generate_cli_command(
             session_id=session_id,
             output_file="/tmp/output.mp4",
             layout="default-1920x1080",
@@ -277,7 +277,7 @@ class TestRendererCLICommand:
 
         monkeypatch.setattr(fm_module, "file_manager", clean_file_manager)
 
-        cmd = generate_cli_command(
+        cmd, _ = generate_cli_command(
             session_id=session_id,
             output_file="/tmp/output.mp4",
             layout="default-1920x1080",
@@ -313,7 +313,7 @@ class TestRendererCLICommand:
 
         monkeypatch.setattr(fm_module, "file_manager", clean_file_manager)
 
-        cmd = generate_cli_command(
+        cmd, _ = generate_cli_command(
             session_id=session_id,
             output_file="/tmp/output.mp4",
             layout="default-1920x1080",
@@ -343,7 +343,7 @@ class TestRendererCLICommand:
 
         monkeypatch.setattr(fm_module, "file_manager", clean_file_manager)
 
-        cmd = generate_cli_command(
+        cmd, _ = generate_cli_command(
             session_id=session_id,
             output_file="/tmp/output.mp4",
             layout="default-1920x1080",
@@ -421,7 +421,7 @@ class TestVerticalVideoRender:
 
         # Generate command for 4K layout with time alignment
         output_file = render_output_dir / "vertical_4k_output.mp4"
-        cmd = generate_cli_command(
+        cmd, _ = generate_cli_command(
             session_id=session_id,
             output_file=str(output_file),
             layout="default-3840x2160",
@@ -571,7 +571,7 @@ class TestVerticalVideoRender:
         monkeypatch.setattr(fm_module, "file_manager", clean_file_manager)
 
         output_file = render_output_dir / "vertical_4k_pillarbox_output.mp4"
-        cmd = generate_cli_command(
+        cmd, _ = generate_cli_command(
             session_id=session_id,
             output_file=str(output_file),
             layout="default-3840x2160",

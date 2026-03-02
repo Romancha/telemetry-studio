@@ -236,7 +236,7 @@ class RenderService:
 
         # Generate CLI command
         try:
-            command = generate_cli_command(
+            command, srt_gpx_temp_files = generate_cli_command(
                 session_id=config.session_id,
                 output_file=config.output_file,
                 layout=config.layout,
@@ -271,7 +271,6 @@ class RenderService:
 
         # Collect temp files for cleanup
         pillarbox_temp_file = None
-        srt_gpx_temp_files = self._find_srt_gpx_temp_files(command)
 
         # Check if video needs pillarboxing (aspect ratio mismatch with canvas)
         from telemetry_studio.services.file_manager import file_manager
@@ -362,7 +361,19 @@ class RenderService:
                 await job_manager.update_job_progress(job_id, 100)
                 logger.info(f"Job {job_id} completed successfully")
             else:
-                error = f"Process exited with code {returncode}"
+                # Include last output lines in error for better diagnostics
+                job = await job_manager.get_job(job_id)
+                last_lines = []
+                if job and job.log_lines:
+                    # Get last non-empty output lines (skip command header)
+                    for line in reversed(job.log_lines):
+                        if line.startswith("=== ") or not line.strip():
+                            continue
+                        last_lines.insert(0, line.strip())
+                        if len(last_lines) >= 3:
+                            break
+                tail = ": " + " | ".join(last_lines) if last_lines else ""
+                error = f"Process exited with code {returncode}{tail}"
                 await job_manager.append_job_log(job_id, "\n=== Failed ===")
                 await job_manager.append_job_log(job_id, error)
                 await job_manager.update_job_status(job_id, JobStatus.FAILED, error)
@@ -553,16 +564,6 @@ class RenderService:
         except Exception:
             logger.exception(f"Error cancelling job {job_id}")
             return False
-
-    @staticmethod
-    def _find_srt_gpx_temp_files(command: str) -> list[str]:
-        """Find temp GPX files generated from SRT conversion in a command string."""
-        import re as _re
-        import tempfile as _tempfile
-
-        temp_dir = _tempfile.gettempdir()
-        pattern = _re.compile(rf"{_re.escape(temp_dir)}/telemetry_studio_srt_\S+\.gpx")
-        return pattern.findall(command)
 
     @staticmethod
     def _cleanup_temp_file(temp_path: str):

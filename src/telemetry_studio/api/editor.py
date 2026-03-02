@@ -1,5 +1,6 @@
 """Editor API endpoints for layout management."""
 
+import logging
 from pathlib import Path
 from typing import Annotated
 
@@ -20,6 +21,8 @@ from telemetry_studio.models.editor import (
 from telemetry_studio.services.file_manager import file_manager
 from telemetry_studio.services.widget_registry import widget_registry
 from telemetry_studio.services.xml_converter import xml_converter
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/editor", tags=["editor"])
 
@@ -178,12 +181,12 @@ async def generate_preview(request: EditorPreviewRequest):
         gpx_path = None
         if request.session_id:
             file_path = file_manager.get_file_path(request.session_id)
-            print(f"[Editor Preview] session_id={request.session_id}, file_path={file_path}")
+            logger.debug("Editor preview: session_id=%s, file_path=%s", request.session_id, file_path)
 
             # If session_id was provided but file not found, return error
             # This means the session expired or file was deleted
             if not file_path or not file_path.exists():
-                print(f"[Editor Preview] File not found for session: {request.session_id}")
+                logger.warning("Editor preview: file not found for session %s", request.session_id)
                 raise HTTPException(status_code=404, detail="Session file not found. Please re-upload your file.")
 
             # Get secondary GPX/FIT file if present (for videos without embedded GPS)
@@ -191,7 +194,7 @@ async def generate_preview(request: EditorPreviewRequest):
             if secondary:
                 gpx_path = Path(secondary.file_path)
         else:
-            print("[Editor Preview] No session_id provided")
+            logger.debug("Editor preview: no session_id provided")
 
         preview_data = await render_preview_from_layout(
             layout=request.layout,
@@ -207,9 +210,11 @@ async def generate_preview(request: EditorPreviewRequest):
             gpx_path=gpx_path,
         )
 
-        print(
-            f"[Editor Preview] Generated image: {preview_data.get('width')}x{preview_data.get('height')}, "
-            f"base64 length: {len(preview_data.get('image_base64', ''))}"
+        logger.debug(
+            "Editor preview: generated %sx%s, base64 length=%d",
+            preview_data.get("width"),
+            preview_data.get("height"),
+            len(preview_data.get("image_base64", "")),
         )
 
         return preview_data
@@ -217,9 +222,7 @@ async def generate_preview(request: EditorPreviewRequest):
     except HTTPException:
         raise
     except Exception as e:
-        import traceback
-
-        traceback.print_exc()
+        logger.exception("Preview generation failed")
         raise HTTPException(status_code=500, detail=f"Preview generation failed: {str(e)}") from e
 
 
@@ -252,7 +255,15 @@ def _load_predefined_layout(layout_name: str) -> EditorLayout:
 
     from gopro_overlay import layouts
 
-    # Try to load from package resources
+    from telemetry_studio.services.renderer import _resolve_layout_path
+
+    # Check telemetry-studio custom layouts first (e.g. dji_drone_*)
+    local_path = _resolve_layout_path(layout_name)
+    if local_path.exists():
+        xml_content = local_path.read_text(encoding="utf-8")
+        return xml_converter.xml_to_layout(xml_content, layout_name)
+
+    # Fall back to gopro-overlay package resources
     try:
         with as_file(files(layouts) / f"{layout_name}.xml") as fn, open(fn) as f:
             xml_content = f.read()

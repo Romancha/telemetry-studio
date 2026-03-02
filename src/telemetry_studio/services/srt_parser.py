@@ -34,6 +34,14 @@ _RE_LONGITUDE = re.compile(r"\[longitude:\s*([-\d.]+)\]")
 _RE_REL_ALT = re.compile(r"\[rel_alt:\s*([-\d.]+)")
 _RE_ABS_ALT = re.compile(r"abs_alt:\s*([-\d.]+)\]")
 
+# Camera metrics patterns
+_RE_ISO = re.compile(r"\[iso:\s*(\d+)\]")
+_RE_SHUTTER = re.compile(r"\[shutter:\s*([\d/.]+)\]")
+_RE_FNUM = re.compile(r"\[fnum:\s*([\d.]+)\]")
+_RE_EV = re.compile(r"\[ev:\s*([-\d.]+)\]")
+_RE_FOCAL_LEN = re.compile(r"\[focal_len:\s*([\d.]+)\]")
+_RE_CT = re.compile(r"\[ct:\s*(\d+)\]")
+
 
 @dataclass
 class SrtPoint:
@@ -49,6 +57,21 @@ class SrtPoint:
     lon: float
     rel_alt: float
     abs_alt: float
+    # Camera metrics (optional — not all SRT files have them)
+    iso: int | None = None
+    shutter: float | None = None  # parsed from fraction "1/3200.0" → 0.0003125
+    fnum: float | None = None
+    ev: float | None = None
+    focal_len: float | None = None
+    ct: int | None = None  # color temperature
+
+
+def _parse_shutter(value: str) -> float:
+    """Parse shutter speed string to float seconds. '1/3200.0' → 0.0003125."""
+    if "/" in value:
+        num, den = value.split("/", 1)
+        return float(num) / float(den)
+    return float(value)
 
 
 def parse_srt(filepath: Path) -> list[SrtPoint]:
@@ -103,7 +126,29 @@ def parse_srt(filepath: Path) -> list[SrtPoint]:
         if abs_alt_match:
             abs_alt = float(abs_alt_match.group(1))
 
-        points.append(SrtPoint(dt=dt, lat=lat, lon=lon, rel_alt=rel_alt, abs_alt=abs_alt))
+        # Extract camera metrics (optional)
+        iso_match = _RE_ISO.search(block)
+        shutter_match = _RE_SHUTTER.search(block)
+        fnum_match = _RE_FNUM.search(block)
+        ev_match = _RE_EV.search(block)
+        focal_len_match = _RE_FOCAL_LEN.search(block)
+        ct_match = _RE_CT.search(block)
+
+        points.append(
+            SrtPoint(
+                dt=dt,
+                lat=lat,
+                lon=lon,
+                rel_alt=rel_alt,
+                abs_alt=abs_alt,
+                iso=int(iso_match.group(1)) if iso_match else None,
+                shutter=_parse_shutter(shutter_match.group(1)) if shutter_match else None,
+                fnum=float(fnum_match.group(1)) if fnum_match else None,
+                ev=float(ev_match.group(1)) if ev_match else None,
+                focal_len=float(focal_len_match.group(1)) if focal_len_match else None,
+                ct=int(ct_match.group(1)) if ct_match else None,
+            )
+        )
 
     return points
 
@@ -132,6 +177,13 @@ def srt_to_timeseries(points: list[SrtPoint], units, sample_rate: int = 1) -> Ti
             gpslock=units.Quantity(GPSFix.LOCK_3D.value),
             packet=units.Quantity(index),
             packet_index=units.Quantity(0),
+            # Camera metrics (None values are filtered out by Entry.__init__)
+            iso=units.Quantity(point.iso) if point.iso is not None else None,
+            shutter=units.Quantity(point.shutter) if point.shutter is not None else None,
+            fnum=units.Quantity(point.fnum) if point.fnum is not None else None,
+            ev=units.Quantity(point.ev) if point.ev is not None else None,
+            focal_len=units.Quantity(point.focal_len) if point.focal_len is not None else None,
+            ct=units.Quantity(point.ct) if point.ct is not None else None,
         )
         for index, point in enumerate(sampled)
     ]
@@ -194,6 +246,10 @@ def estimate_tz_offset(
     if points is None:
         points = parse_srt(srt_path)
     if not points:
+        return None, "start"
+
+    if not video_path.exists():
+        logger.warning("Video file not found for tz offset estimation: %s", video_path)
         return None, "start"
 
     stat = os.stat(video_path)

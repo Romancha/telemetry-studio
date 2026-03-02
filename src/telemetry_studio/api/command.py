@@ -1,10 +1,18 @@
 """Command generation API endpoint."""
 
+import re
+
 from fastapi import APIRouter, HTTPException
 
 from telemetry_studio.models.schemas import CommandRequest, CommandResponse
+from telemetry_studio.scripts.gopro_dashboard_wrapper import TS_SRT_SOURCE_ARG, TS_SRT_VIDEO_ARG
 from telemetry_studio.services.file_manager import file_manager
 from telemetry_studio.services.renderer import generate_cli_command
+
+# Pattern to strip wrapper-internal args from user-facing commands.
+# Handles both plain paths (\S+) and shell-quoted paths ('...').
+_wrapper_arg_names = re.escape(TS_SRT_SOURCE_ARG) + "|" + re.escape(TS_SRT_VIDEO_ARG)
+_RE_WRAPPER_ARGS = re.compile(rf"\s+(?:{_wrapper_arg_names})\s+(?:'[^']*'|\S+)")
 
 router = APIRouter()
 
@@ -28,8 +36,8 @@ async def generate_command(request: CommandRequest) -> CommandResponse:
         gpx_merge_mode = request.gpx_fit_options.merge_mode
         video_time_alignment = request.gpx_fit_options.video_time_alignment
 
-    # Generate the command
-    command = generate_cli_command(
+    # Generate the command (temp_files are not needed for display-only use)
+    command, _temp_files = generate_cli_command(
         session_id=request.session_id,
         output_file=request.output_filename,
         layout=request.layout,
@@ -44,7 +52,11 @@ async def generate_command(request: CommandRequest) -> CommandResponse:
         ffmpeg_profile=request.ffmpeg_profile,
     )
 
+    # Strip wrapper-internal args (--ts-srt-source/--ts-srt-video) from
+    # user-facing command — these are only understood by the wrapper subprocess.
+    user_command = _RE_WRAPPER_ARGS.sub("", command)
+
     return CommandResponse(
-        command=command,
+        command=user_command,
         input_file=primary_file.file_path,
     )

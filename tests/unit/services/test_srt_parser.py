@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from telemetry_studio.services.srt_parser import (
+    _parse_shutter,
     estimate_tz_offset,
     get_srt_metadata,
     parse_srt,
@@ -94,6 +95,36 @@ class TestParseSrt:
         path.write_text("", encoding="utf-8")
         points = parse_srt(path)
         assert len(points) == 0
+
+    def test_extracts_camera_metrics(self, srt_file):
+        points = parse_srt(srt_file)
+        p = points[0]
+        assert p.iso == 100
+        assert p.shutter == pytest.approx(1.0 / 3200.0)
+        assert p.fnum == pytest.approx(1.7)
+        assert p.ev == pytest.approx(0.0)
+        assert p.focal_len == pytest.approx(24.0)
+        assert p.ct == 5310
+
+    def test_camera_metrics_none_when_absent(self, tmp_path):
+        srt_content = """\
+1
+00:00:00,000 --> 00:00:00,033
+<font size="28">FrameCnt: 1, DiffTime: 33ms
+2024-08-07 12:34:24.380
+[latitude: 69.189116] [longitude: 35.259334] [rel_alt: 1.100 abs_alt: -2.927] </font>
+"""
+        path = tmp_path / "no_cam.srt"
+        path.write_text(srt_content, encoding="utf-8")
+        points = parse_srt(path)
+        assert len(points) == 1
+        p = points[0]
+        assert p.iso is None
+        assert p.shutter is None
+        assert p.fnum is None
+        assert p.ev is None
+        assert p.focal_len is None
+        assert p.ct is None
 
     def test_malformed_blocks_skipped(self, tmp_path):
         srt_content = """\
@@ -295,3 +326,55 @@ class TestEstimateTzOffset:
         video_path.write_bytes(b"fake")
         offset, _ = estimate_tz_offset(srt_path, video_path)
         assert offset is None
+
+
+class TestParseShutter:
+    def test_fraction(self):
+        assert _parse_shutter("1/3200.0") == pytest.approx(1.0 / 3200.0)
+
+    def test_simple_float(self):
+        assert _parse_shutter("0.5") == pytest.approx(0.5)
+
+    def test_fraction_integer_denominator(self):
+        assert _parse_shutter("1/100") == pytest.approx(0.01)
+
+
+class TestTimeseriesCameraMetrics:
+    def test_entries_have_camera_metrics(self, srt_file):
+        from gopro_overlay.units import units
+
+        from telemetry_studio.services.srt_parser import srt_to_timeseries
+
+        points = parse_srt(srt_file)
+        ts = srt_to_timeseries(points, units)
+        # Get first entry by datetime key
+        entry = ts.entries[points[0].dt]
+        assert entry.iso is not None
+        assert entry.iso.magnitude == 100
+        assert entry.fnum is not None
+        assert entry.fnum.magnitude == pytest.approx(1.7)
+        assert entry.shutter is not None
+        assert entry.shutter.magnitude == pytest.approx(1.0 / 3200.0)
+        assert entry.ct is not None
+        assert entry.ct.magnitude == 5310
+
+    def test_entries_without_camera_metrics(self, tmp_path):
+        from gopro_overlay.units import units
+
+        from telemetry_studio.services.srt_parser import srt_to_timeseries
+
+        srt_content = """\
+1
+00:00:00,000 --> 00:00:00,033
+<font size="28">FrameCnt: 1, DiffTime: 33ms
+2024-08-07 12:34:24.380
+[latitude: 69.189116] [longitude: 35.259334] [rel_alt: 1.100 abs_alt: -2.927] </font>
+"""
+        path = tmp_path / "no_cam.srt"
+        path.write_text(srt_content, encoding="utf-8")
+        points = parse_srt(path)
+        ts = srt_to_timeseries(points, units)
+        entry = ts.entries[points[0].dt]
+        # Camera metrics should be None (not in Entry.items)
+        assert entry.iso is None
+        assert entry.fnum is None

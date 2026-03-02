@@ -217,7 +217,7 @@ class TestMetadataPreservationAfterRender:
 
         # Generate command
         output_file = render_output_dir / "output_with_timecode.mp4"
-        cmd = generate_cli_command(
+        cmd, _ = generate_cli_command(
             session_id=session_id,
             output_file=str(output_file),
             layout="default-1920x1080",
@@ -283,7 +283,7 @@ class TestMetadataPreservationAfterRender:
 
         # Generate and run render
         output_file = render_output_dir / "output_with_audio.mp4"
-        cmd = generate_cli_command(
+        cmd, _ = generate_cli_command(
             session_id=session_id,
             output_file=str(output_file),
             layout="default-1920x1080",
@@ -344,7 +344,7 @@ class TestMetadataPreservationAfterRender:
 
         # Generate and run render
         output_file = render_output_dir / "output_with_creation_time.mp4"
-        cmd = generate_cli_command(
+        cmd, _ = generate_cli_command(
             session_id=session_id,
             output_file=str(output_file),
             layout="default-1920x1080",

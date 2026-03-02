@@ -4,6 +4,8 @@ import inspect
 from pathlib import Path
 from unittest.mock import Mock
 
+import pytest
+
 
 class TestApplyPatches:
     """Test apply_patches() function."""
@@ -204,6 +206,57 @@ class TestFFMPEGOverlayVideoPatch:
         assert overlay._timecode is None
 
 
+class TestMetricPatch:
+    """Test metric_accessor_from patch for DJI camera metrics."""
+
+    def test_custom_metrics_accessible_after_patch(self):
+        """Test that DJI camera metrics are accessible after patching."""
+        from telemetry_studio.patches import apply_patches
+
+        apply_patches()
+
+        from gopro_overlay.layout_xml import metric_accessor_from
+
+        for metric_name in ("iso", "shutter", "fnum", "ev", "focal_len", "ct"):
+            accessor = metric_accessor_from(metric_name)
+            assert callable(accessor), f"Accessor for '{metric_name}' should be callable"
+
+    def test_original_metrics_still_work(self):
+        """Test that original gopro-overlay metrics still work after patching."""
+        from telemetry_studio.patches import apply_patches
+
+        apply_patches()
+
+        from gopro_overlay.layout_xml import metric_accessor_from
+
+        for metric_name in ("speed", "alt", "hr"):
+            accessor = metric_accessor_from(metric_name)
+            assert callable(accessor), f"Original accessor for '{metric_name}' should still work"
+
+    def test_unknown_metric_still_raises(self):
+        """Test that unknown metrics still raise IOError after patching."""
+        from telemetry_studio.patches import apply_patches
+
+        apply_patches()
+
+        from gopro_overlay.layout_xml import metric_accessor_from
+
+        with pytest.raises(OSError, match="not supported"):
+            metric_accessor_from("nonexistent_metric_xyz")
+
+    def test_patch_idempotent(self):
+        """Test that metric patch can be applied multiple times safely."""
+        from telemetry_studio.patches.metric_patches import patch_metric_accessor
+
+        patch_metric_accessor()
+        patch_metric_accessor()
+
+        from gopro_overlay.layout_xml import metric_accessor_from
+
+        accessor = metric_accessor_from("iso")
+        assert callable(accessor)
+
+
 class TestWrapperScript:
     """Test the gopro-dashboard wrapper script."""
 
@@ -220,6 +273,59 @@ class TestWrapperScript:
 
         assert hasattr(gopro_dashboard_wrapper, "main")
         assert hasattr(gopro_dashboard_wrapper, "find_gopro_dashboard")
+        assert hasattr(gopro_dashboard_wrapper, "_extract_srt_args")
+
+
+class TestExtractSrtArgs:
+    """Test _extract_srt_args() in wrapper script."""
+
+    def test_extracts_srt_source(self, monkeypatch):
+        import sys
+
+        from telemetry_studio.scripts.gopro_dashboard_wrapper import _extract_srt_args
+
+        monkeypatch.setattr(sys, "argv", ["script", "--gpx", "track.gpx", "--ts-srt-source", "/path/to/file.srt"])
+        srt_path, video_path = _extract_srt_args()
+        assert srt_path == "/path/to/file.srt"
+        assert video_path is None
+        assert sys.argv == ["script", "--gpx", "track.gpx"]
+
+    def test_extracts_both_args(self, monkeypatch):
+        import sys
+
+        from telemetry_studio.scripts.gopro_dashboard_wrapper import _extract_srt_args
+
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["script", "--ts-srt-source", "/path/to/file.srt", "--ts-srt-video", "/path/to/video.mp4", "--gpx", "t.gpx"],
+        )
+        srt_path, video_path = _extract_srt_args()
+        assert srt_path == "/path/to/file.srt"
+        assert video_path == "/path/to/video.mp4"
+        assert sys.argv == ["script", "--gpx", "t.gpx"]
+
+    def test_no_srt_args_returns_none(self, monkeypatch):
+        import sys
+
+        from telemetry_studio.scripts.gopro_dashboard_wrapper import _extract_srt_args
+
+        monkeypatch.setattr(sys, "argv", ["script", "--gpx", "track.gpx", "--layout", "default"])
+        srt_path, video_path = _extract_srt_args()
+        assert srt_path is None
+        assert video_path is None
+        assert sys.argv == ["script", "--gpx", "track.gpx", "--layout", "default"]
+
+    def test_extracts_args_at_end(self, monkeypatch):
+        import sys
+
+        from telemetry_studio.scripts.gopro_dashboard_wrapper import _extract_srt_args
+
+        monkeypatch.setattr(sys, "argv", ["script", "--gpx", "t.gpx", "--ts-srt-source", "/a.srt", "--ts-srt-video", "/v.mp4"])
+        srt_path, video_path = _extract_srt_args()
+        assert srt_path == "/a.srt"
+        assert video_path == "/v.mp4"
+        assert sys.argv == ["script", "--gpx", "t.gpx"]
 
 
 class TestConfigIntegration:

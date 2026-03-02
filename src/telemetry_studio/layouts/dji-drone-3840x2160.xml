@@ -1,0 +1,66 @@
+<layout>
+    <!-- Date and Time (top-left) -->
+    <composite x="40" y="40" name="date_time">
+        <component type="datetime" x="0" y="0" format="%Y/%m/%d" size="32" align="left"/>
+        <component type="datetime" x="0" y="48" format="%H:%M:%S" size="64" align="left"/>
+    </composite>
+
+    <!-- Speed (bottom-left) -->
+    <composite x="40" y="1600" name="speed">
+        <component type="metric_unit" x="0" y="0" metric="speed" units="speed" size="32">{:~c}</component>
+        <component type="metric" x="0" y="0" metric="speed" units="speed" dp="0" size="320"/>
+    </composite>
+
+    <!-- Altitude (bottom-left, below speed) -->
+    <composite x="40" y="1960" name="altitude">
+        <component type="metric_unit" x="140" y="0" metric="alt" units="alt" size="32">ALT({:~C})</component>
+        <component type="icon" x="0" y="0" file="mountain.png" size="128"/>
+        <component type="metric" x="140" y="36" metric="alt" units="alt" dp="0" size="64"/>
+    </composite>
+
+    <!-- Gradient (bottom-center-left) -->
+    <composite x="440" y="1960" name="gradient">
+        <component type="text" x="140" y="0" size="32">SLOPE(%)</component>
+        <component type="icon" x="0" y="0" file="slope-triangle.png" size="128"/>
+        <component type="metric" x="140" y="36" metric="gradient" dp="0" size="64"/>
+    </composite>
+
+    <!-- Gradient chart -->
+    <component type="chart" name="gradient_chart" x="800" y="1960"/>
+
+    <!-- Camera info (bottom-right) -->
+    <composite x="3680" y="1720" name="camera_info">
+        <component type="text" x="-200" y="0" size="28" align="right">ISO</component>
+        <component type="metric" x="-200" y="36" metric="iso" dp="0" size="56" align="right"/>
+
+        <component type="text" x="0" y="0" size="28" align="right">F/</component>
+        <component type="metric" x="0" y="36" metric="fnum" dp="1" size="56" align="right"/>
+    </composite>
+
+    <composite x="3680" y="1860" name="camera_info_2">
+        <component type="text" x="-200" y="0" size="28" align="right">EV</component>
+        <component type="metric" x="-200" y="36" metric="ev" dp="1" size="56" align="right"/>
+
+        <component type="text" x="0" y="0" size="28" align="right">CT</component>
+        <component type="metric" x="0" y="36" metric="ct" dp="0" size="56" align="right"/>
+    </composite>
+
+    <!-- GPS info (top-right, above map) -->
+    <composite x="3288" y="0" name="gps_info">
+        <frame name="gps-lock" x="452" y="48" width="64" height="64" bg="0,0,0,128" cr="10" opacity="0.4">
+            <component type="gps-lock-icon" size="64"/>
+        </frame>
+
+        <composite y="72">
+            <component type="text" x="0" y="0" size="32" align="left">GPS INFO</component>
+            <component type="text" x="0" y="48" size="32" align="left">Lat: </component>
+            <component type="text" x="256" y="48" size="32" align="left">Lon: </component>
+            <component type="metric" x="236" y="48" metric="lat" dp="6" size="32" align="right" cache="False"/>
+            <component type="metric" x="512" y="48" metric="lon" dp="6" size="32" align="right" cache="False"/>
+        </composite>
+    </composite>
+
+    <!-- Maps (right side) -->
+    <component type="moving_map" name="moving_map" x="3288" y="200" size="512" zoom="16" corner_radius="70"/>
+    <component type="journey_map" name="journey_map" x="3288" y="752" size="512" corner_radius="70"/>
+</layout>

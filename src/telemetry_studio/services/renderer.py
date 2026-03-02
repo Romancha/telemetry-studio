@@ -100,12 +100,21 @@ class LayoutInfo:
     height: int
 
 
+def _discover_local_layouts() -> list[str]:
+    """Discover layout names from the telemetry-studio layouts/ directory."""
+    layouts_dir = Path(__file__).parent.parent / "layouts"
+    if not layouts_dir.is_dir():
+        return []
+    return sorted(p.stem for p in layouts_dir.glob("*.xml"))
+
+
 def get_available_layouts() -> list[LayoutInfo]:
     """Get list of available layouts with their metadata."""
     layouts = []
 
-    # Parse layout names to extract resolution
-    layout_names = [
+    # Auto-discover custom layouts from layouts/ directory, then add gopro-overlay built-ins
+    local_layouts = _discover_local_layouts()
+    builtin_layouts = [
         "default-1920x1080",
         "default-2688x1512",
         "default-2704x1520",
@@ -120,6 +129,7 @@ def get_available_layouts() -> list[LayoutInfo]:
         "example",
         "example-2",
     ]
+    layout_names = local_layouts + builtin_layouts
 
     for name in layout_names:
         width, height = _parse_resolution(name)
@@ -153,12 +163,29 @@ def _parse_resolution(name: str) -> tuple[int, int]:
     return 1920, 1080
 
 
+_UPPERCASE_WORDS = {"dji"}
+
+
 def _format_display_name(name: str) -> str:
     """Format layout name for display."""
     # Replace underscores and hyphens with spaces
     display = name.replace("_", " ").replace("-", " ")
-    # Capitalize words
-    return display.title()
+    # Capitalize words, keeping known abbreviations uppercase
+    words = display.split()
+    return " ".join(
+        w.upper() if w.lower() in _UPPERCASE_WORDS else w.title() for w in words
+    )
+
+
+def _resolve_layout_path(layout: str) -> Path:
+    """Resolve layout path, checking telemetry-studio layouts first.
+
+    Layouts in src/telemetry_studio/layouts/ take priority over gopro-overlay built-ins.
+    """
+    local = Path(__file__).parent.parent / "layouts" / f"{layout}.xml"
+    if local.exists():
+        return local
+    return Path(layout)
 
 
 def get_available_units() -> dict:
@@ -383,7 +410,7 @@ def render_preview(
     )
 
     # Load the layout XML
-    layout_xml = load_xml_layout(Path(layout))
+    layout_xml = load_xml_layout(_resolve_layout_path(layout))
 
     # Get layout dimensions
     layout_info = None
@@ -751,17 +778,6 @@ def _convert_srt_to_gpx(srt_path: Path, tz_offset: timedelta | None = None) -> s
     return str(gpx_output)
 
 
-def _estimate_srt_tz_offset(srt_path: Path, video_path: Path) -> tuple[timedelta | None, str]:
-    """Estimate timezone offset for SRT file and detect mtime role.
-
-    Returns:
-        Tuple of (offset, mtime_role) where mtime_role is "start" or "end".
-    """
-    from telemetry_studio.services.srt_parser import estimate_tz_offset
-
-    return estimate_tz_offset(srt_path, video_path)
-
-
 def generate_cli_command(
     session_id: str,
     output_file: str | None,
@@ -777,7 +793,7 @@ def generate_cli_command(
     ffmpeg_profile: str | None = None,
     gps_dop_max: float = DEFAULT_GPS_DOP_MAX,
     gps_speed_max: float = DEFAULT_GPS_SPEED_MAX,
-) -> str:
+) -> tuple[str, list[str]]:
     """Generate the CLI command for full video processing.
 
     Supports three modes:
@@ -786,6 +802,11 @@ def generate_cli_command(
     3. GPX/FIT only (overlay-only mode)
 
     Note: All paths and values are properly shell-escaped to prevent command injection.
+
+    Returns:
+        Tuple of (command_string, temp_files) where temp_files is a list of
+        temporary file paths (e.g. SRT→GPX conversions) that should be cleaned up
+        after the command finishes.
     """
     import logging
     import os
@@ -804,6 +825,9 @@ def generate_cli_command(
 
     if not primary:
         raise ValueError(f"No primary file in session {session_id}. Available files: {files}")
+
+    # Track temp files created during command generation (e.g. SRT→GPX)
+    temp_files: list[str] = []
 
     primary_path = primary.file_path
     primary_type = primary.file_type
@@ -837,8 +861,11 @@ def generate_cli_command(
     # If secondary is SRT, convert to GPX for CLI compatibility
     secondary_gpx_path = None
     if secondary and secondary.file_type == "srt":
-        tz_offset, srt_mtime_role = _estimate_srt_tz_offset(Path(secondary.file_path), Path(primary_path))
+        from telemetry_studio.services.srt_parser import estimate_tz_offset
+
+        tz_offset, srt_mtime_role = estimate_tz_offset(Path(secondary.file_path), Path(primary_path))
         secondary_gpx_path = _convert_srt_to_gpx(Path(secondary.file_path), tz_offset=tz_offset)
+        temp_files.append(secondary_gpx_path)
         logger.info(f"Converted secondary SRT to GPX: {secondary_gpx_path}")
 
     # Resolve secondary file path (use converted GPX if SRT was converted)
@@ -889,6 +916,7 @@ def generate_cli_command(
         gpx_primary_path = primary_path
         if primary_type == "srt":
             gpx_primary_path = _convert_srt_to_gpx(Path(primary_path))
+            temp_files.append(gpx_primary_path)
 
         cmd_parts = [
             "gopro-dashboard.py",
@@ -916,15 +944,21 @@ def generate_cli_command(
         cmd_parts.append("--layout xml")
         cmd_parts.append(f"--layout-xml {shlex.quote(layout_xml_path)}")
     else:
-        # Map UI template names to CLI layout names
-        # UI uses names like "default-1920x1080" but CLI only accepts "default", "speed-awareness", "xml"
-        cli_layout = layout
-        if layout.startswith("default-"):
-            cli_layout = "default"
-        elif layout.startswith("speed-awareness"):
-            cli_layout = "speed-awareness"
-        # Predefined layout: use --layout <name>
-        cmd_parts.append(f"--layout {shlex.quote(cli_layout)}")
+        # Check if layout is a telemetry-studio custom layout (e.g. dji-drone-1920x1080)
+        local_layout = _resolve_layout_path(layout)
+        if local_layout.exists():
+            cmd_parts.append("--layout xml")
+            cmd_parts.append(f"--layout-xml {shlex.quote(str(local_layout))}")
+        else:
+            # Map UI template names to CLI layout names
+            # UI uses names like "default-1920x1080" but CLI only accepts "default", "speed-awareness", "xml"
+            cli_layout = layout
+            if layout.startswith("default-"):
+                cli_layout = "default"
+            elif layout.startswith("speed-awareness"):
+                cli_layout = "speed-awareness"
+            # Predefined layout: use --layout <name>
+            cmd_parts.append(f"--layout {shlex.quote(cli_layout)}")
 
     # Always add unit options (CLI defaults differ from UI defaults)
     cmd_parts.append(f"--units-speed {shlex.quote(units_speed)}")
@@ -951,4 +985,13 @@ def generate_cli_command(
     if gps_speed_max is not None:
         cmd_parts.append(f"--gps-speed-max {gps_speed_max}")
 
-    return " ".join(cmd_parts)
+    # Pass original SRT path to wrapper for camera metrics preservation.
+    # The wrapper strips these args before running gopro-dashboard.py.
+    if secondary and secondary.file_type == "srt":
+        cmd_parts.append(f"--ts-srt-source {shlex.quote(secondary.file_path)}")
+        cmd_parts.append(f"--ts-srt-video {shlex.quote(primary_path)}")
+    elif primary_type == "srt":
+        # No --ts-srt-video: SRT-only mode has no video for tz-offset estimation
+        cmd_parts.append(f"--ts-srt-source {shlex.quote(primary_path)}")
+
+    return " ".join(cmd_parts), temp_files

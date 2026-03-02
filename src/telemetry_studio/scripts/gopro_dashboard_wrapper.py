@@ -5,6 +5,7 @@ This script serves as a drop-in replacement for gopro-dashboard.py,
 applying patches for:
 - Timecode extraction and preservation (Final Cut Pro compatibility)
 - Enhanced FFmpeg options (audio copy, metadata preservation)
+- DJI SRT camera metrics preservation (when --ts-srt-source is provided)
 
 Usage:
     python gopro_dashboard_wrapper.py [gopro-dashboard.py arguments...]
@@ -26,6 +27,11 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+# Wrapper-internal arg names consumed by this script (not passed to gopro-dashboard.py).
+# Shared with command.py which strips them from user-facing command strings.
+TS_SRT_SOURCE_ARG = "--ts-srt-source"
+TS_SRT_VIDEO_ARG = "--ts-srt-video"
 
 
 def find_gopro_dashboard() -> Path | None:
@@ -55,6 +61,34 @@ def find_gopro_dashboard() -> Path | None:
     return None
 
 
+def _extract_srt_args() -> tuple[str | None, str | None]:
+    """Extract and remove SRT-specific arguments from sys.argv.
+
+    These custom args are consumed by the wrapper and must not be passed
+    to gopro-dashboard.py (it would error on unknown args).
+
+    Returns:
+        Tuple of (srt_path, video_path). Either may be None.
+    """
+    srt_path = None
+    video_path = None
+    new_argv = []
+    i = 0
+    while i < len(sys.argv):
+        arg = sys.argv[i]
+        if arg == TS_SRT_SOURCE_ARG and i + 1 < len(sys.argv):
+            srt_path = sys.argv[i + 1]
+            i += 2
+        elif arg == TS_SRT_VIDEO_ARG and i + 1 < len(sys.argv):
+            video_path = sys.argv[i + 1]
+            i += 2
+        else:
+            new_argv.append(arg)
+            i += 1
+    sys.argv = new_argv
+    return srt_path, video_path
+
+
 def main():
     """Main entry point for the gopro-dashboard wrapper."""
     # Apply patches BEFORE importing anything from gopro_overlay
@@ -63,6 +97,16 @@ def main():
 
     apply_patches()
     logger.info("Patches applied successfully")
+
+    # Extract SRT args before passing argv to gopro-dashboard.py
+    srt_path, video_path = _extract_srt_args()
+
+    # Patch GPX loading to use SRT directly (preserves camera metrics)
+    if srt_path:
+        from telemetry_studio.patches.gpx_patches import patch_gpx_load_for_srt
+
+        patch_gpx_load_for_srt(srt_path, video_path)
+        logger.info(f"SRT GPX patch applied: srt={srt_path}, video={video_path}")
 
     # Find the original gopro-dashboard.py
     dashboard_script = find_gopro_dashboard()
@@ -85,6 +129,9 @@ def main():
         # Propagate exit codes from gopro-dashboard.py
         sys.exit(e.code)
     except Exception as e:
+        # Print error to stdout so render_service captures it in job logs
+        error_msg = f"ERROR: {e}"
+        print(error_msg, flush=True)
         logger.exception(f"Failed to execute gopro-dashboard.py: {e}")
         sys.exit(1)
 
