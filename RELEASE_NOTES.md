@@ -1,12 +1,19 @@
 # Release Notes
 
+## Version 0.6.5 — 02 Mar 2026
+
+### 🐞 Fixes
+
+- Fixed gopro-dashboard.py not found when installed via pipx (search in Python executable's bin directory)
+
+---
+
 ## Version 0.6.4 — 02 Mar 2026
 
 ### 🐞 Fixes
 
 - Fixed startup crash with setuptools 82+ (pin setuptools<82 to keep pkg_resources for geotiler)
 - Fixed browser opening before server is ready — now opens after uvicorn startup completes
-- Fixed gopro-dashboard.py not found when installed via pipx (search in Python executable's bin directory)
 
 ---
 
