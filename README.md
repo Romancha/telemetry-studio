@@ -110,6 +110,7 @@ Telemetry Studio includes runtime patches for `gopro-overlay` that add:
 - **Timecode preservation** — Maintains original video timecode for Final Cut Pro compatibility
 - **Audio stream copy** — Preserves audio without re-encoding
 - **Metadata preservation** — Keeps original video metadata in output
+- **DJI camera metrics** — Extends overlay engine with ISO, shutter, f-number, EV, color temperature, and focal length from DJI SRT files
 
 Patches are applied automatically at startup. To disable:
 

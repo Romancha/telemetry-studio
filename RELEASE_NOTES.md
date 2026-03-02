@@ -1,5 +1,34 @@
 # Release Notes
 
+## Version 0.6.0 — 02 Mar 2026
+
+### 🎉 Major Features
+
+**DJI Camera Metrics in Overlays**
+
+Display DJI camera metadata (ISO, shutter speed, f-number, EV, color temperature, focal length) directly in video overlays.
+
+- **Camera metrics parsing** - SRT parser now extracts all camera fields alongside GPS data
+- **Metrics preservation during render** - A wrapper-level patch intercepts GPX loading to use original SRT data, preventing loss of camera metrics during the SRT→GPX conversion
+- **Custom metric accessors** - Extended gopro_overlay's metric system to support DJI-specific fields (iso, fnum, ev, ct, shutter, focal_len)
+
+### 🆕 New
+
+- **DJI Drone layouts** - Four resolution-specific overlay layouts (1080p, 2.7K, 4K, 5K) with speed, altitude, slope, GPS info, maps, and camera metadata widgets
+
+### ✨ Improvements
+
+- Failed render jobs now include last output lines in the error message for easier diagnostics
+- Replaced print statements with structured logging in editor and wrapper modules
+- Temp file tracking for SRT→GPX conversions is now handled by `generate_cli_command` return value instead of regex parsing
+- Wrapper-internal arguments (`--ts-srt-source`, `--ts-srt-video`) are stripped from user-facing command display
+
+### 🐞 Fixes
+
+- Fixed missing video existence check before timezone offset estimation in SRT parser
+
+---
+
 ## Version 0.5.0 — 28 Feb 2026
 
 ### 🎉 Major Features
