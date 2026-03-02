@@ -54,15 +54,16 @@ def main():
     host = args.host or settings.host
     port = args.port or settings.port
 
-    import webbrowser
-
     import uvicorn
 
     url = f"http://{'127.0.0.1' if host == '0.0.0.0' else host}:{port}"
     print(f"Starting Telemetry Studio at {url}")
     print("Press Ctrl+C to stop")
 
-    webbrowser.open(url)
+    # Store URL for browser opening after server startup (see app.py lifespan)
+    import telemetry_studio.app as _app_module
+
+    _app_module._startup_url = url
 
     uvicorn.run(
         "telemetry_studio.app:app",

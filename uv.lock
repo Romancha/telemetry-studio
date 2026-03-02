@@ -1024,7 +1024,7 @@ requires-dist = [
     { name = "pytest-playwright", marker = "extra == 'dev'", specifier = ">=0.7.2" },
     { name = "python-multipart", specifier = ">=0.0.22" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.14.14" },
-    { name = "setuptools" },
+    { name = "setuptools", specifier = "<82" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.40.0" },
 ]
 provides-extras = ["dev"]

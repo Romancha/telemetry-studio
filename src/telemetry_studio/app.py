@@ -48,11 +48,21 @@ async def cleanup_task():
             logger.info(f"Cleaned up {jobs_cleaned} old job(s)")
 
 
+_startup_url: str | None = None
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler for startup and shutdown tasks."""
     # Startup: create cleanup task
     task = asyncio.create_task(cleanup_task())
+
+    # Open browser now that the server is ready to accept connections
+    if _startup_url:
+        import webbrowser
+
+        webbrowser.open(_startup_url)
+
     yield
     # Shutdown: cancel cleanup task
     task.cancel()

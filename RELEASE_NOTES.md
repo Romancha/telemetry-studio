@@ -1,5 +1,14 @@
 # Release Notes
 
+## Version 0.6.4 — 02 Mar 2026
+
+### 🐞 Fixes
+
+- Fixed startup crash with setuptools 82+ (pin setuptools<82 to keep pkg_resources for geotiler)
+- Fixed browser opening before server is ready — now opens after uvicorn startup completes
+
+---
+
 ## Version 0.6.3 — 02 Mar 2026
 
 ### 🐞 Fixes
