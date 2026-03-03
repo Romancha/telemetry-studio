@@ -1,5 +1,24 @@
 # Release Notes
 
+## Version 0.7.1 — 03 Mar 2026
+
+### ✨ Improvements
+
+- **Stitch Blue design system** — Updated color scheme across all views to match the new GPStitch brand identity (accent color, navy backgrounds, softer border-radius)
+- **Favicon and logo** — Added GPS-pin favicon with Stitch ears to browser tabs; inline logo in all page headers
+- **Dark theme for classic view** — Classic interface now uses the same dark theme as the main UI
+- **Self-hosted JetBrains Mono** — Monospace font served locally, no external CDN dependency
+
+### 🐞 Fixes
+
+- Fixed header and toolbar buttons (Export XML, Batch Render, Save, Upload, Manage, etc.) disappearing off-screen on narrow windows — they now wrap to the next line
+- Fixed unreadable white text on light-blue accent buttons and widget labels
+- Fixed selected widget glow using old cyan color instead of brand blue
+- Fixed editor page title still showing "GoPro Overlay"
+- Fixed tooltip and canvas using neutral grey instead of navy palette
+
+---
+
 ## Version 0.7.0 — 03 Mar 2026
 
 - Rename project to GPStitch

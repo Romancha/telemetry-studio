@@ -126,11 +126,13 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    height: var(--header-height);
-    padding: 0 var(--space-4);
+    min-height: var(--header-height);
+    padding: var(--space-2) var(--space-4);
     background: var(--color-bg-panel);
     border-bottom: 1px solid var(--color-border);
     z-index: 100;
+    flex-wrap: wrap;
+    gap: var(--space-2);
 }
 
 .header-left {
@@ -176,6 +178,7 @@ body {
     display: flex;
     align-items: center;
     gap: var(--space-3);
+    flex-wrap: wrap;
 }
 
 /* File Context */
@@ -502,12 +505,14 @@ body {
     background: var(--color-bg-panel);
     border-bottom: 1px solid var(--color-border);
     min-height: 44px;
+    flex-wrap: wrap;
 }
 
 .toolbar-group {
     display: flex;
     align-items: center;
     gap: var(--space-2);
+    flex-wrap: wrap;
 }
 
 .toolbar-group label {
