@@ -1,5 +1,16 @@
 # Release Notes
 
+## Version 0.9.0 — 10 Mar 2026
+
+### 🎉 Major Features
+
+**Time Sync for External GPX Files**
+- Align non-GoPro video timestamps with external GPX track data using three explicit modes: **auto** (extract creation time from video metadata), **gpx-timestamps** (use GPX data as-is without alignment), and **manual** (auto-detected time with a user-specified offset in seconds)
+- Manual mode adds +/- controls and direct offset input so users can fine-tune alignment frame by frame
+- Time offset is applied consistently through preview and render pipelines
+
+---
+
 ## Version 0.8.0 — 05 Mar 2026
 
 ### ✨ Improvements
