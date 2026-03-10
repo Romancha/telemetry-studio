@@ -91,3 +91,6 @@ temp/
 docs/plans/
 
 tests/fixtures/videos/large
+
+# ralphex progress logs
+.ralphex/progress/

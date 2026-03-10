@@ -51,6 +51,8 @@ async def generate_preview(request: PreviewRequest) -> PreviewResponse:
                 gps_dop_max=request.gps_dop_max,
                 gps_speed_max=request.gps_speed_max,
                 gpx_path=gpx_path,
+                video_time_alignment=request.video_time_alignment,
+                time_offset_seconds=request.time_offset_seconds,
             ),
         )
 

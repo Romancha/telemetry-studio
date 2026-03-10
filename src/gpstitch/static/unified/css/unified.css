@@ -1824,6 +1824,87 @@ select {
     color: var(--color-text-muted);
 }
 
+/* Time Sync Hint */
+.time-sync-hint {
+    margin-top: var(--space-1);
+    padding: var(--space-1) var(--space-2);
+    font-size: var(--font-size-xs);
+    color: var(--color-text-secondary);
+    background: var(--color-bg-input);
+    border-radius: var(--radius-sm);
+    border-left: 2px solid var(--color-border-focus);
+}
+
+.time-sync-hint.time-sync-warning {
+    border-left-color: var(--color-warning, #f59e0b);
+    color: var(--color-warning, #f59e0b);
+}
+
+/* Manual Offset Panel */
+.manual-offset-panel {
+    margin-top: var(--space-2);
+}
+
+.manual-offset-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+}
+
+.offset-btn {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-bg-input);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-primary);
+    font-size: var(--font-size-sm);
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+}
+
+.offset-btn:hover {
+    background: var(--color-bg-hover, var(--color-border));
+}
+
+.offset-input {
+    width: 60px;
+    padding: var(--space-1);
+    background: var(--color-bg-input);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-primary);
+    font-size: var(--font-size-sm);
+    text-align: center;
+    -moz-appearance: textfield;
+}
+
+.offset-input::-webkit-outer-spin-button,
+.offset-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.offset-input:focus {
+    outline: none;
+    border-color: var(--color-border-focus);
+}
+
+.offset-label {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-muted);
+}
+
+.manual-offset-info {
+    margin-top: var(--space-1);
+    font-size: var(--font-size-xs);
+    color: var(--color-text-muted);
+}
+
 .config-section-title {
     font-size: var(--font-size-xs);
     font-weight: var(--font-weight-semibold);

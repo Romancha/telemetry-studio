@@ -88,7 +88,8 @@ class GpxFitOptions(BaseModel):
     """Options for GPX/FIT processing."""
 
     merge_mode: str = "OVERWRITE"  # "EXTEND" or "OVERWRITE"
-    video_time_alignment: str | None = None  # "file-created", "file-modified", "file-accessed"
+    video_time_alignment: Literal["auto", "gpx-timestamps", "manual"] = "auto"
+    time_offset_seconds: int = 0
 
 
 class UploadResponse(BaseModel):
@@ -177,6 +178,8 @@ class PreviewRequest(BaseModel):
     map_style: str | None = None
     gps_dop_max: float = DEFAULT_GPS_DOP_MAX
     gps_speed_max: float = DEFAULT_GPS_SPEED_MAX
+    video_time_alignment: Literal["auto", "gpx-timestamps", "manual"] = "auto"
+    time_offset_seconds: int = 0
 
 
 class PreviewResponse(BaseModel):

@@ -31,13 +31,17 @@ class UnifiedState {
             mapStyle: 'osm',
             // GPX/FIT options
             gpxMergeMode: 'OVERWRITE',
-            videoTimeAlignment: null,
+            videoTimeAlignment: 'auto',
+            timeOffsetSeconds: 0,
             // FFmpeg profile (empty = default)
             ffmpegProfile: '',
             // GPS filter settings (less strict than CLI defaults)
             gpsDopMax: 20,      // CLI default: 10
             gpsSpeedMax: 200    // CLI default: 60 kph
         };
+
+        // Time sync analysis result (from /api/time-sync/analyze)
+        this.timeSyncInfo = null;
 
         // Preview state
         this.previewLoading = false;
@@ -71,6 +75,11 @@ class UnifiedState {
             try {
                 const parsed = JSON.parse(savedQuickConfig);
                 this.quickConfig = { ...this.quickConfig, ...parsed };
+                // Migrate old time alignment values to new format
+                const oldValues = ['file-created', 'file-modified', 'file-accessed', null, ''];
+                if (oldValues.includes(this.quickConfig.videoTimeAlignment)) {
+                    this.quickConfig.videoTimeAlignment = 'auto';
+                }
             } catch (e) {
                 console.warn('Failed to parse saved quick config:', e);
             }
@@ -203,6 +212,7 @@ class UnifiedState {
         this.duration = 0;
         this.currentFrameTimeMs = 0;
         this.thumbnails = [];
+        this.timeSyncInfo = null;
 
         localStorage.removeItem('gopro_editor_session_id');
 
@@ -292,7 +302,10 @@ class UnifiedState {
             mapStyle: this.quickConfig.mapStyle,
             // GPS filter settings
             gpsDopMax: this.quickConfig.gpsDopMax,
-            gpsSpeedMax: this.quickConfig.gpsSpeedMax
+            gpsSpeedMax: this.quickConfig.gpsSpeedMax,
+            // Time alignment for external GPX
+            videoTimeAlignment: this.quickConfig.videoTimeAlignment,
+            timeOffsetSeconds: this.quickConfig.timeOffsetSeconds
         };
 
         if (this.mode === 'quick') {
@@ -311,7 +324,8 @@ class UnifiedState {
         if (this.isMergeMode() || this.isGpxOnlyMode()) {
             return {
                 merge_mode: this.quickConfig.gpxMergeMode,
-                video_time_alignment: this.quickConfig.videoTimeAlignment
+                video_time_alignment: this.quickConfig.videoTimeAlignment,
+                time_offset_seconds: this.quickConfig.timeOffsetSeconds || 0
             };
         }
         return null;

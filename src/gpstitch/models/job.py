@@ -3,7 +3,7 @@
 from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from gpstitch.constants import (
     DEFAULT_GPS_DOP_MAX,
@@ -32,6 +32,16 @@ class JobType(str, Enum):
     RENDER = "render"
 
 
+_OLD_ALIGNMENT_VALUES = {"file-created", "file-accessed"}
+
+
+def migrate_video_time_alignment(value: str | None) -> str:
+    """Migrate old video_time_alignment values to new 'auto' default."""
+    if value is None or value in _OLD_ALIGNMENT_VALUES:
+        return "auto"
+    return value
+
+
 class RenderJobConfig(BaseModel):
     """Configuration for a render job."""
 
@@ -45,10 +55,16 @@ class RenderJobConfig(BaseModel):
     units_temperature: str = DEFAULT_UNITS_TEMPERATURE
     map_style: str | None = None
     gpx_merge_mode: str = DEFAULT_GPX_MERGE_MODE
-    video_time_alignment: str | None = None
+    video_time_alignment: str = "auto"
+    time_offset_seconds: int = 0
     ffmpeg_profile: str | None = None  # FFmpeg encoding profile name
     gps_dop_max: float = DEFAULT_GPS_DOP_MAX
     gps_speed_max: float = DEFAULT_GPS_SPEED_MAX
+
+    @field_validator("video_time_alignment", mode="before")
+    @classmethod
+    def _migrate_alignment(cls, v: str | None) -> str:
+        return migrate_video_time_alignment(v)
 
 
 class JobProgress(BaseModel):

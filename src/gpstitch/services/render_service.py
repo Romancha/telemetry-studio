@@ -102,6 +102,45 @@ class RenderService:
             logger.warning(f"Failed to parse SRT start time from {srt_path}: {e}")
         return None
 
+    def _resolve_mtime_for_alignment(self, config: RenderJobConfig, video_path: str) -> float | None:
+        """Resolve the target mtime for time alignment modes.
+
+        For "auto"/"manual": extract creation_time via ffprobe, fallback to st_ctime,
+        apply time_offset_seconds for manual mode. Returns Unix timestamp.
+        For "file-modified" (SRT legacy): resolve based on secondary file type.
+        Returns None if no mtime change is needed.
+        """
+        from gpstitch.services.file_manager import file_manager
+
+        # For SRT secondary, the renderer forces "file-modified" alignment using
+        # the video's original mtime (which DJI sets to recording start or end).
+        # Do NOT override mtime in auto/manual mode when SRT is secondary.
+        secondary = file_manager.get_secondary_file(config.session_id)
+        is_srt = secondary and secondary.file_type == "srt"
+
+        if config.video_time_alignment in ("auto", "manual") and not is_srt:
+            from gpstitch.services.renderer import _extract_creation_time
+
+            creation_time = _extract_creation_time(Path(video_path))
+            if creation_time is not None:
+                ts = creation_time.timestamp()
+            else:
+                from gopro_overlay.ffmpeg_gopro import filestat
+
+                fstat = filestat(Path(video_path))
+                ts = fstat.ctime.timestamp()
+
+            if config.video_time_alignment == "manual" and config.time_offset_seconds:
+                ts += config.time_offset_seconds
+            return ts
+
+        if config.video_time_alignment == "file-modified" or is_srt:
+            if secondary and secondary.file_type in ("gpx", "fit"):
+                return self._get_gpx_start_timestamp(secondary.file_path)
+            elif is_srt:
+                return os.stat(video_path).st_mtime
+        return None
+
     def _needs_pillarbox(self, video_path: str, config: RenderJobConfig) -> tuple[int, int, int, int] | None:
         """Check if video needs pillarboxing to fit the canvas.
 
@@ -273,11 +312,16 @@ class RenderService:
 
         # Collect temp files for cleanup
         pillarbox_temp_file = None
+        restore_mtime_info = None  # (path, atime, mtime) to restore after render
 
         # Check if video needs pillarboxing (aspect ratio mismatch with canvas)
         from gpstitch.services.file_manager import file_manager
 
         primary = file_manager.get_primary_file(config.session_id)
+        secondary = file_manager.get_secondary_file(config.session_id)
+        # mtime manipulation is only needed when there's a secondary file (merge mode),
+        # because video-only renders (Mode 1) don't use --video-time-start.
+        needs_mtime = secondary is not None
         if primary and primary.file_type == "video":
             pillarbox_info = self._needs_pillarbox(primary.file_path, config)
             if pillarbox_info:
@@ -287,29 +331,33 @@ class RenderService:
                     primary.file_path, canvas_w, canvas_h, video_w, video_h, job_id
                 )
                 if pillarbox_temp_file:
-                    # When using file-modified time alignment with external GPX,
-                    # preserve the original video's mtime on the pillarbox file.
-                    # For GPX/FIT: set mtime to GPX start (since video mtime may not match).
-                    # For SRT: keep original video mtime (SRT→GPX timestamps are already
-                    # corrected to UTC using the video mtime as reference).
-                    if config.video_time_alignment == "file-modified":
-                        secondary = file_manager.get_secondary_file(config.session_id)
-                        target_ts = None
-                        if secondary and secondary.file_type in ("gpx", "fit"):
-                            target_ts = self._get_gpx_start_timestamp(secondary.file_path)
-                        elif secondary and secondary.file_type == "srt":
-                            # Copy original video mtime — SRT GPX timestamps are already
-                            # adjusted to match this via estimate_tz_offset()
-                            stat = os.stat(primary.file_path)
-                            target_ts = stat.st_mtime
-                        if target_ts:
-                            os.utime(pillarbox_temp_file, (target_ts, target_ts))
-                            await job_manager.append_job_log(
-                                job_id,
-                                "Set pillarbox file mtime for time alignment",
-                            )
+                    # Set mtime on pillarbox file for time alignment.
+                    # gopro-dashboard uses --video-time-start file-modified which reads mtime.
+                    target_ts = self._resolve_mtime_for_alignment(
+                        config, primary.file_path
+                    ) if needs_mtime else None
+                    if target_ts:
+                        os.utime(pillarbox_temp_file, (target_ts, target_ts))
+                        await job_manager.append_job_log(
+                            job_id,
+                            "Set pillarbox file mtime for time alignment",
+                        )
                     # Replace video path in command with pillarboxed version
                     command = command.replace(shlex.quote(primary.file_path), shlex.quote(pillarbox_temp_file))
+            else:
+                # No pillarbox — set mtime on original video if needed
+                # (save and restore after render)
+                target_ts = self._resolve_mtime_for_alignment(
+                    config, primary.file_path
+                ) if needs_mtime else None
+                if target_ts:
+                    original_stat = os.stat(primary.file_path)
+                    os.utime(primary.file_path, (target_ts, target_ts))
+                    restore_mtime_info = (primary.file_path, original_stat.st_atime, original_stat.st_mtime)
+                    await job_manager.append_job_log(
+                        job_id,
+                        "Set video file mtime for time alignment",
+                    )
 
         # Parse command into args
         try:
@@ -318,6 +366,10 @@ class RenderService:
             args[0] = str(gopro_dashboard)
         except Exception as e:
             await job_manager.update_job_status(job_id, JobStatus.FAILED, f"Failed to parse command: {e}")
+            if restore_mtime_info:
+                path, atime, mtime = restore_mtime_info
+                with contextlib.suppress(OSError):
+                    os.utime(path, (atime, mtime))
             if pillarbox_temp_file:
                 self._cleanup_temp_file(pillarbox_temp_file)
             await _clear_current_job()
@@ -391,6 +443,11 @@ class RenderService:
             await job_manager.update_job_status(job_id, JobStatus.FAILED, str(e))
             logger.exception(f"Job {job_id} failed with exception")
         finally:
+            # Restore original mtime if we changed it
+            if restore_mtime_info:
+                path, atime, mtime = restore_mtime_info
+                with contextlib.suppress(OSError):
+                    os.utime(path, (atime, mtime))
             # Clean up temp files
             if pillarbox_temp_file:
                 self._cleanup_temp_file(pillarbox_temp_file)
@@ -404,6 +461,7 @@ class RenderService:
 
     async def _start_next_pending_job(self):
         """Start the next pending job in queue if exists (with lock protection)."""
+        next_job = None
         async with self._lock:
             # Double-check no job is running before starting next
             if self._current_job_id is not None:

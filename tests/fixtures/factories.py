@@ -73,7 +73,8 @@ def create_render_config(
     units_temperature: str = "degC",
     map_style: str | None = None,
     gpx_merge_mode: str = "OVERWRITE",
-    video_time_alignment: str | None = None,
+    video_time_alignment: str = "auto",
+    time_offset_seconds: int = 0,
     ffmpeg_profile: str | None = None,
 ) -> RenderJobConfig:
     """Create RenderJobConfig with defaults."""
@@ -89,6 +90,7 @@ def create_render_config(
         map_style=map_style,
         gpx_merge_mode=gpx_merge_mode,
         video_time_alignment=video_time_alignment,
+        time_offset_seconds=time_offset_seconds,
         ffmpeg_profile=ffmpeg_profile,
     )
 

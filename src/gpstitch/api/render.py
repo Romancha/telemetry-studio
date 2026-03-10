@@ -7,7 +7,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from gpstitch.constants import (
     DEFAULT_GPS_DOP_MAX,
@@ -18,7 +18,7 @@ from gpstitch.constants import (
     DEFAULT_UNITS_SPEED,
     DEFAULT_UNITS_TEMPERATURE,
 )
-from gpstitch.models.job import RenderJobConfig
+from gpstitch.models.job import RenderJobConfig, migrate_video_time_alignment
 from gpstitch.models.schemas import FileRole
 from gpstitch.services.file_manager import file_manager
 from gpstitch.services.job_manager import job_manager
@@ -42,10 +42,16 @@ class RenderJobRequest(BaseModel):
     units_temperature: str = DEFAULT_UNITS_TEMPERATURE
     map_style: str | None = None
     gpx_merge_mode: str = DEFAULT_GPX_MERGE_MODE
-    video_time_alignment: str | None = None
+    video_time_alignment: str = "auto"
+    time_offset_seconds: int = 0
     ffmpeg_profile: str | None = None  # FFmpeg encoding profile (e.g., "mac", "nvgpu")
     gps_dop_max: float = DEFAULT_GPS_DOP_MAX
     gps_speed_max: float = DEFAULT_GPS_SPEED_MAX
+
+    @field_validator("video_time_alignment", mode="before")
+    @classmethod
+    def _migrate_alignment(cls, v: str | None) -> str:
+        return migrate_video_time_alignment(v)
 
 
 class RenderJobResponse(BaseModel):
@@ -300,6 +306,7 @@ async def start_render(request: RenderJobRequest, background_tasks: BackgroundTa
         map_style=request.map_style,
         gpx_merge_mode=request.gpx_merge_mode,
         video_time_alignment=request.video_time_alignment,
+        time_offset_seconds=request.time_offset_seconds,
         ffmpeg_profile=request.ffmpeg_profile,
         gps_dop_max=request.gps_dop_max,
         gps_speed_max=request.gps_speed_max,
@@ -426,10 +433,16 @@ class BatchRenderRequest(BaseModel):
     units_temperature: str = DEFAULT_UNITS_TEMPERATURE
     map_style: str | None = None
     gpx_merge_mode: str = DEFAULT_GPX_MERGE_MODE
-    video_time_alignment: str | None = None
+    video_time_alignment: str = "auto"
+    time_offset_seconds: int = 0
     ffmpeg_profile: str | None = None
     gps_dop_max: float = DEFAULT_GPS_DOP_MAX
     gps_speed_max: float = DEFAULT_GPS_SPEED_MAX
+
+    @field_validator("video_time_alignment", mode="before")
+    @classmethod
+    def _migrate_alignment(cls, v: str | None) -> str:
+        return migrate_video_time_alignment(v)
 
 
 class BatchRenderResponse(BaseModel):
@@ -563,6 +576,7 @@ async def start_batch_render(request: BatchRenderRequest, background_tasks: Back
                 map_style=request.map_style,
                 gpx_merge_mode=request.gpx_merge_mode,
                 video_time_alignment=request.video_time_alignment,
+                time_offset_seconds=request.time_offset_seconds,
                 ffmpeg_profile=request.ffmpeg_profile,
                 gps_dop_max=request.gps_dop_max,
                 gps_speed_max=request.gps_speed_max,

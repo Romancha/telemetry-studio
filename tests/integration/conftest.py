@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 
 # Original mtime of DJI test video (git clone does not preserve file timestamps).
-# Value from: DJI_20250721102743_0001_D.MP4 recorded 2025-07-21, mtime = end of recording.
-_DJI_VIDEO_ORIGINAL_MTIME = datetime(2025, 7, 21, 7, 27, 45, tzinfo=UTC).timestamp()
+# Value from: DJI_20250723102139_0001_D.MP4 recorded 2025-07-23, mtime = end of recording.
+_DJI_VIDEO_ORIGINAL_MTIME = datetime(2025, 7, 23, 7, 21, 42, tzinfo=UTC).timestamp()
 
 
 @pytest.fixture(scope="module")

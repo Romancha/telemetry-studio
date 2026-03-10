@@ -393,11 +393,10 @@ class TestVerticalVideoRender:
         from gpstitch.services.renderer import generate_cli_command
 
         # Copy video to temp dir and set mtime to match GPX data
-        # GPX timestamps: 2026-01-26T17:36:34Z (start of first trackpoint)
         video_copy = render_output_dir / integration_test_mov_video.name
         shutil.copy2(integration_test_mov_video, video_copy)
-        # Set file modified time to match GPX first trackpoint time (17:36:54Z)
-        gpx_start = datetime(2026, 1, 26, 17, 36, 54, tzinfo=UTC).timestamp()
+        # Set file modified time to match GPX trackpoint time
+        gpx_start = datetime(2024, 8, 8, 16, 52, 18, tzinfo=UTC).timestamp()
         os.utime(video_copy, (gpx_start, gpx_start))
 
         # Setup session with MOV video + GPX
@@ -507,18 +506,16 @@ class TestVerticalVideoRender:
         from gpstitch.services import file_manager as fm_module
         from gpstitch.services.renderer import generate_cli_command
 
-        # Copy video to temp dir and set mtime to match GPX first trackpoint
+        # Copy video to temp dir and set mtime to match GPX trackpoint time
         video_copy = render_output_dir / integration_test_mov_video.name
         shutil.copy2(integration_test_mov_video, video_copy)
-        gpx_start = datetime(2026, 1, 26, 17, 36, 54, tzinfo=UTC).timestamp()
+        gpx_start = datetime(2024, 8, 8, 16, 52, 18, tzinfo=UTC).timestamp()
         os.utime(video_copy, (gpx_start, gpx_start))
 
         # Step 1: Create pillarboxed video with FFmpeg
-        # Video is 1080x1920 (portrait), canvas is 3840x2160 (landscape)
-        # scale = min(3840/1080, 2160/1920) = min(3.555, 1.125) = 1.125
-        # new_w = 1080 * 1.125 = 1215 (round to even: 1214), new_h = 1920 * 1.125 = 2160
+        # Video is portrait, canvas is 3840x2160 (landscape)
         canvas_w, canvas_h = 3840, 2160
-        video_w, video_h = 1080, 1920
+        video_w, video_h = 360, 640
         scale = min(canvas_w / video_w, canvas_h / video_h)
         new_w = int(video_w * scale)
         new_h = int(video_h * scale)

@@ -316,6 +316,62 @@ class TestDjiSrtCliCommand:
 
 
 @pytest.mark.integration
+class TestDjiSrtTimeSyncAnalyze:
+    """Test /api/time-sync/analyze endpoint with real DJI video + SRT."""
+
+    def test_time_sync_analyze_with_srt(
+        self, clean_file_manager, integration_test_dji_video, integration_test_dji_srt, monkeypatch
+    ):
+        """Time sync analysis should work with SRT file as secondary telemetry."""
+        from gpstitch.api.time_sync import _analyze_sync
+        from gpstitch.services import file_manager as fm_module
+
+        session_id = clean_file_manager.create_local_session()
+        clean_file_manager.add_file(
+            session_id=session_id,
+            filename=integration_test_dji_video.name,
+            file_path=str(integration_test_dji_video),
+            file_type="video",
+            role=FileRole.PRIMARY,
+        )
+        clean_file_manager.add_file(
+            session_id=session_id,
+            filename=integration_test_dji_srt.name,
+            file_path=str(integration_test_dji_srt),
+            file_type="srt",
+            role=FileRole.SECONDARY,
+        )
+
+        monkeypatch.setattr(fm_module, "file_manager", clean_file_manager)
+
+        result = _analyze_sync(
+            video_path=Path(integration_test_dji_video),
+            time_offset_seconds=0,
+            gpx_path=Path(integration_test_dji_srt),
+        )
+
+        assert result.video_start is not None
+        assert result.video_duration_sec > 0
+        assert result.source in ("media-created", "file-created")
+        # Note: overlap may be None because video creation_time is UTC
+        # while SRT timestamps are local time (timezone mismatch).
+        # The key assertion is that analysis completes without crashing
+        # (previously failed with SystemExit when SRT was passed to load_external).
+
+    def test_time_sync_analyze_srt_no_crash_on_system_exit(self):
+        """Verify _calculate_overlap handles unsupported file types gracefully."""
+        from gpstitch.api.time_sync import _calculate_overlap
+
+        # Pass a non-existent .xyz file — should return None, not crash
+        result = _calculate_overlap(
+            video_start=datetime(2025, 7, 21, 10, 27, 43),
+            video_duration_sec=10.0,
+            gpx_path=Path("/tmp/nonexistent.xyz"),
+        )
+        assert result is None
+
+
+@pytest.mark.integration
 @pytest.mark.slow
 class TestDjiSrtFullRender:
     """Full rendering pipeline with DJI video + SRT telemetry.
@@ -329,15 +385,6 @@ class TestDjiSrtFullRender:
         with tempfile.TemporaryDirectory(prefix="gpstitch_dji_test_") as tmpdir:
             yield Path(tmpdir)
 
-    @pytest.mark.xfail(
-        reason=(
-            "Test DJI video is only ~0.8s. gopro-dashboard's DateRange.overlap_seconds() "
-            "returns int(delta) which truncates 0.8s to 0, failing the overlap check. "
-            "Needs a test video >= 1.1s to pass. Non-slow tests cover SRT→GPX, preview, "
-            "timeseries, and CLI command generation."
-        ),
-        strict=False,
-    )
     def test_render_dji_video_with_srt(
         self,
         integration_test_dji_video,
@@ -362,14 +409,12 @@ class TestDjiSrtFullRender:
         from gpstitch.services.srt_parser import parse_srt, srt_to_gpx_file
 
         # Convert SRT to GPX with sample_rate=1 (keep all points)
-        # The test SRT is very short (~0.8s, 25 frames), so no thinning
         srt_points = parse_srt(integration_test_dji_srt)
         gpx_output = render_output_dir / "dji_telemetry.gpx"
         srt_to_gpx_file(integration_test_dji_srt, gpx_output, sample_rate=1)
 
         # Extend GPX time range by adding a point 2s after the last one.
-        # gopro-dashboard requires strict time overlap between video and GPX,
-        # and the test SRT is only ~0.8s, which causes edge cases.
+        # gopro-dashboard requires strict time overlap between video and GPX.
         gpx_content = gpx_output.read_text()
         last_point = srt_points[-1]
         extra_point = (
@@ -385,8 +430,11 @@ class TestDjiSrtFullRender:
         shutil.copy2(integration_test_dji_video, video_copy)
 
         # Set mtime 1 second after SRT start for file-modified alignment.
-        # gopro-dashboard uses mtime as a reference and requires strict overlap.
-        srt_start_ts = srt_points[0].dt.timestamp() + 1
+        # SRT timestamps are naive (local time) but written to GPX as UTC,
+        # so treat them as UTC here to ensure overlap.
+        from datetime import UTC
+
+        srt_start_ts = srt_points[0].dt.replace(tzinfo=UTC).timestamp() + 1
         os.utime(video_copy, (srt_start_ts, srt_start_ts))
 
         # Use the pre-converted GPX (not SRT) to avoid auto-sampling

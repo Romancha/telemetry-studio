@@ -1,8 +1,10 @@
-"""Unit tests for render_service - process cancellation and cleanup."""
+"""Unit tests for render_service - process cancellation, cleanup, and mtime alignment."""
 
 import asyncio
+import datetime
 import signal
 import sys
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -164,3 +166,141 @@ class TestKillProcessTree:
         with patch("os.killpg", side_effect=ProcessLookupError):
             # Should not raise
             await render_service._kill_process_tree()
+
+
+class TestResolveMtimeForAlignment:
+    """Tests for _resolve_mtime_for_alignment method."""
+
+    @pytest.fixture
+    def render_service(self):
+        from gpstitch.services.render_service import RenderService
+
+        return RenderService()
+
+    @pytest.fixture
+    def config(self):
+        from gpstitch.models.job import RenderJobConfig
+
+        return RenderJobConfig(
+            session_id="test-session",
+            layout="default-1920x1080",
+            output_file="/tmp/output.mp4",
+        )
+
+    def test_auto_mode_with_creation_time(self, render_service, config):
+        """Auto mode should return creation_time as Unix timestamp."""
+        config.video_time_alignment = "auto"
+        creation_time = datetime.datetime(2024, 8, 8, 17, 13, 0, tzinfo=datetime.UTC)
+
+        with patch(
+            "gpstitch.services.renderer._extract_creation_time",
+            return_value=creation_time,
+        ):
+            ts = render_service._resolve_mtime_for_alignment(config, "/tmp/video.mov")
+
+        assert ts == creation_time.timestamp()
+
+    def test_auto_mode_fallback_to_ctime(self, render_service, config):
+        """Auto mode should fallback to filestat().ctime when no creation_time."""
+        config.video_time_alignment = "auto"
+
+        fake_ctime = datetime.datetime(2024, 8, 8, 17, 13, 0, tzinfo=datetime.UTC)
+        mock_fstat = SimpleNamespace(ctime=fake_ctime)
+
+        with (
+            patch(
+                "gpstitch.services.renderer._extract_creation_time",
+                return_value=None,
+            ),
+            patch("gopro_overlay.ffmpeg_gopro.filestat", return_value=mock_fstat),
+        ):
+            ts = render_service._resolve_mtime_for_alignment(config, "/tmp/video.mov")
+
+        assert ts == fake_ctime.timestamp()
+
+    def test_manual_mode_with_offset(self, render_service, config):
+        """Manual mode should add offset to creation_time timestamp."""
+        config.video_time_alignment = "manual"
+        config.time_offset_seconds = 60
+        creation_time = datetime.datetime(2024, 8, 8, 17, 13, 0, tzinfo=datetime.UTC)
+
+        with patch(
+            "gpstitch.services.renderer._extract_creation_time",
+            return_value=creation_time,
+        ):
+            ts = render_service._resolve_mtime_for_alignment(config, "/tmp/video.mov")
+
+        assert ts == creation_time.timestamp() + 60
+
+    def test_manual_mode_with_negative_offset(self, render_service, config):
+        """Manual mode should support negative offsets."""
+        config.video_time_alignment = "manual"
+        config.time_offset_seconds = -30
+        creation_time = datetime.datetime(2024, 8, 8, 17, 13, 0, tzinfo=datetime.UTC)
+
+        with patch(
+            "gpstitch.services.renderer._extract_creation_time",
+            return_value=creation_time,
+        ):
+            ts = render_service._resolve_mtime_for_alignment(config, "/tmp/video.mov")
+
+        assert ts == creation_time.timestamp() - 30
+
+    def test_gpx_timestamps_returns_none(self, render_service, config):
+        """GPX-timestamps mode should return None (no mtime change needed)."""
+        config.video_time_alignment = "gpx-timestamps"
+
+        ts = render_service._resolve_mtime_for_alignment(config, "/tmp/video.mov")
+
+        assert ts is None
+
+    def test_none_alignment_returns_none(self, render_service, config):
+        """No alignment should return None."""
+        config.video_time_alignment = None
+
+        ts = render_service._resolve_mtime_for_alignment(config, "/tmp/video.mov")
+
+        assert ts is None
+
+    def test_file_modified_with_gpx_secondary(self, render_service, config, monkeypatch):
+        """file-modified mode with GPX secondary should use GPX start timestamp."""
+        config.video_time_alignment = "file-modified"
+
+        mock_secondary = MagicMock()
+        mock_secondary.file_type = "gpx"
+        mock_secondary.file_path = "/tmp/track.gpx"
+
+        from gpstitch.services import file_manager as fm_module
+
+        mock_fm = MagicMock()
+        mock_fm.get_secondary_file.return_value = mock_secondary
+        monkeypatch.setattr(fm_module, "file_manager", mock_fm)
+
+        with patch.object(
+            render_service, "_get_gpx_start_timestamp", return_value=1723132380.0
+        ):
+            ts = render_service._resolve_mtime_for_alignment(config, "/tmp/video.mov")
+
+        assert ts == 1723132380.0
+
+    def test_file_modified_with_srt_secondary(self, render_service, config, monkeypatch):
+        """file-modified mode with SRT secondary should use original video mtime."""
+        config.video_time_alignment = "file-modified"
+
+        mock_secondary = MagicMock()
+        mock_secondary.file_type = "srt"
+        mock_secondary.file_path = "/tmp/telemetry.srt"
+
+        from gpstitch.services import file_manager as fm_module
+
+        mock_fm = MagicMock()
+        mock_fm.get_secondary_file.return_value = mock_secondary
+        monkeypatch.setattr(fm_module, "file_manager", mock_fm)
+
+        mock_stat = MagicMock()
+        mock_stat.st_mtime = 1723132380.0
+
+        with patch("os.stat", return_value=mock_stat):
+            ts = render_service._resolve_mtime_for_alignment(config, "/tmp/video.mov")
+
+        assert ts == 1723132380.0

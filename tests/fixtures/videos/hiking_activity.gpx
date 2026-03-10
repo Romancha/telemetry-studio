@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx creator="Garmin Connect" version="1.1"
+  xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/11.xsd"
+  xmlns:ns3="http://www.garmin.com/xmlschemas/TrackPointExtension/v1"
+  xmlns="http://www.topografix.com/GPX/1/1"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:ns2="http://www.garmin.com/xmlschemas/GpxExtensions/v3">
+  <metadata>
+    <link href="connect.garmin.com">
+      <text>Garmin Connect</text>
+    </link>
+    <time>2024-08-08T16:51:57.000Z</time>
+  </metadata>
+  <trk>
+    <name>Hiking Test Track</name>
+    <type>hiking</type>
+    <trkseg>
+      <trkpt lat="67.698389" lon="33.595200">
+        <ele>493.2</ele>
+        <time>2024-08-08T16:51:57.000Z</time>
+      </trkpt>
+      <trkpt lat="67.698302" lon="33.595271">
+        <ele>492.6</ele>
+        <time>2024-08-08T16:52:04.000Z</time>
+      </trkpt>
+      <trkpt lat="67.698289" lon="33.595277">
+        <ele>492.6</ele>
+        <time>2024-08-08T16:52:05.000Z</time>
+      </trkpt>
+      <trkpt lat="67.698223" lon="33.595345">
+        <ele>492.4</ele>
+        <time>2024-08-08T16:52:12.000Z</time>
+      </trkpt>
+      <trkpt lat="67.698186" lon="33.595392">
+        <ele>492.2</ele>
+        <time>2024-08-08T16:52:16.000Z</time>
+      </trkpt>
+      <trkpt lat="67.698169" lon="33.595391">
+        <ele>492.4</ele>
+        <time>2024-08-08T16:52:18.000Z</time>
+      </trkpt>
+      <trkpt lat="67.698146" lon="33.595387">
+        <ele>492.4</ele>
+        <time>2024-08-08T16:52:24.000Z</time>
+      </trkpt>
+      <trkpt lat="67.698045" lon="33.595353">
+        <ele>492.2</ele>
+        <time>2024-08-08T16:52:34.000Z</time>
+      </trkpt>
+      <trkpt lat="67.697971" lon="33.595342">
+        <ele>491.6</ele>
+        <time>2024-08-08T16:52:41.000Z</time>
+      </trkpt>
+      <trkpt lat="67.697878" lon="33.595341">
+        <ele>490.6</ele>
+        <time>2024-08-08T16:52:48.000Z</time>
+      </trkpt>
+      <trkpt lat="67.697866" lon="33.595352">
+        <ele>490.6</ele>
+        <time>2024-08-08T16:52:49.000Z</time>
+      </trkpt>
+      <trkpt lat="67.697783" lon="33.595306">
+        <ele>490.0</ele>
+        <time>2024-08-08T16:52:55.000Z</time>
+      </trkpt>
+    </trkseg>
+  </trk>
+</gpx>

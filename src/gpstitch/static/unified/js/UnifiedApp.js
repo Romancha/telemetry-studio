@@ -12,6 +12,7 @@ class UnifiedApp {
         this.timeline = null;
         this.modeToggle = null;
         this.previewDebouncer = new PreviewDebouncer(500);
+        this._timeSyncAbortController = null;
 
         // DOM elements
         this.fileContextEl = document.getElementById('file-context');
@@ -311,12 +312,14 @@ class UnifiedApp {
         this.state.on('session:changed', () => {
             this._updateFileContext();
             this._requestPreview();
+            this._analyzeTimeSync();
         });
 
         // Files changed (secondary added/removed)
         this.state.on('files:changed', () => {
             this._updateFileContext();
             this._requestPreview();
+            this._analyzeTimeSync();
         });
 
         // GPX options changed
@@ -324,7 +327,19 @@ class UnifiedApp {
             this._requestPreview();
         });
 
+        // Time offset changed — re-analyze and debounce preview
+        this.state.on('timeOffset:changed', ({ offset }) => {
+            this._analyzeTimeSync();
+            this._requestPreview();
+        });
+
         this.state.on('session:cleared', () => {
+            // Abort any in-flight time sync request so stale responses
+            // don't overwrite the cleared timeSyncInfo
+            if (this._timeSyncAbortController) {
+                this._timeSyncAbortController.abort();
+                this._timeSyncAbortController = null;
+            }
             this._hideFileContext();
             this._showPreviewEmpty();
         });
@@ -517,6 +532,52 @@ class UnifiedApp {
     }
 
     /**
+     * Analyze time sync between video and GPX
+     */
+    async _analyzeTimeSync() {
+        // Cancel any in-flight request before checking conditions,
+        // so stale responses never overwrite state after context changes
+        if (this._timeSyncAbortController) {
+            this._timeSyncAbortController.abort();
+            this._timeSyncAbortController = null;
+        }
+
+        if (!this.state.hasValidSession() || !this.state.isMergeMode()) {
+            this.state.timeSyncInfo = null;
+            this.state.emit('timeSyncInfo:changed', null);
+            return;
+        }
+        this._timeSyncAbortController = new AbortController();
+        const { signal } = this._timeSyncAbortController;
+
+        try {
+            const response = await fetch('/api/time-sync/analyze', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    session_id: this.state.sessionId,
+                    time_offset_seconds: this.state.quickConfig.timeOffsetSeconds || 0
+                }),
+                signal
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                this.state.timeSyncInfo = data;
+                this.state.emit('timeSyncInfo:changed', data);
+            } else {
+                this.state.timeSyncInfo = null;
+                this.state.emit('timeSyncInfo:changed', null);
+            }
+        } catch (error) {
+            if (error.name === 'AbortError') return;
+            console.warn('Time sync analysis failed:', error);
+            this.state.timeSyncInfo = null;
+            this.state.emit('timeSyncInfo:changed', null);
+        }
+    }
+
+    /**
      * Generate preview
      */
     async _generatePreview(signal) {
@@ -546,7 +607,9 @@ class UnifiedApp {
                         units_temperature: config.unitsTemperature,
                         map_style: config.mapStyle,
                         gps_dop_max: config.gpsDopMax,
-                        gps_speed_max: config.gpsSpeedMax
+                        gps_speed_max: config.gpsSpeedMax,
+                        video_time_alignment: config.videoTimeAlignment || 'auto',
+                        time_offset_seconds: config.timeOffsetSeconds || 0
                     }),
                     signal
                 });
@@ -579,7 +642,9 @@ class UnifiedApp {
                         units_temperature: config.unitsTemperature,
                         map_style: config.mapStyle,
                         gps_dop_max: config.gpsDopMax,
-                        gps_speed_max: config.gpsSpeedMax
+                        gps_speed_max: config.gpsSpeedMax,
+                        video_time_alignment: config.videoTimeAlignment || 'auto',
+                        time_offset_seconds: config.timeOffsetSeconds || 0
                     }),
                     signal
                 });

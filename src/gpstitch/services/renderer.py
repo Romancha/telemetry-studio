@@ -2,7 +2,9 @@
 
 import asyncio
 import base64
+import datetime
 import io
+import logging
 import re
 import shlex
 import tempfile
@@ -24,6 +26,8 @@ from gpstitch.constants import (
     DEFAULT_UNITS_TEMPERATURE,
     UNIT_OPTIONS,
 )
+
+logger = logging.getLogger(__name__)
 
 # Apply runtime patches if enabled
 if settings.enable_gopro_patches:
@@ -307,9 +311,104 @@ def _extract_video_frame(file_path: Path, time_ms: int, width: int, height: int)
             frame = Image.frombytes("RGBA", (width, height), frame_bytes)
             return frame
     except Exception as e:
-        print(f"Failed to extract video frame: {e}")
+        logger.warning("Failed to extract video frame: %s", e)
 
     return None
+
+
+def _extract_creation_time(file_path: Path) -> datetime.datetime | None:
+    """Extract creation_time from video metadata via ffprobe.
+
+    Returns a timezone-aware datetime or None if not found.
+    """
+    import json
+
+    from gopro_overlay.ffmpeg import FFMPEG
+
+    try:
+        ffmpeg = FFMPEG()
+        output = str(
+            ffmpeg.ffprobe()
+            .invoke(
+                [
+                    "-hide_banner",
+                    "-print_format",
+                    "json",
+                    "-show_format",
+                    str(file_path),
+                ]
+            )
+            .stdout
+        )
+        data = json.loads(output)
+        tags = data.get("format", {}).get("tags", {})
+        creation_time_str = tags.get("creation_time")
+        if creation_time_str:
+            dt = datetime.datetime.fromisoformat(creation_time_str.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=datetime.UTC)
+            return dt
+    except Exception as e:
+        logger.debug("Could not extract creation_time from %s: %s", file_path, e)
+
+    return None
+
+
+def _resolve_time_alignment(
+    file_path: Path,
+    video_time_alignment: str | None,
+    ffmpeg_gopro,
+    time_offset_seconds: int = 0,
+):
+    """Resolve video start_date and duration for GPX time alignment.
+
+    Modes:
+    - "auto": extract creation_time from video metadata (ffprobe),
+      fallback to st_ctime. Returns (start_date, duration, source).
+    - "gpx-timestamps": no alignment, GPX used as-is.
+      Returns (None, None, None).
+    - "manual": auto-detected time + offset shift.
+      Returns (start_date + offset, duration, source).
+
+    Returns (start_date, duration, source) where source is
+    "media-created", "file-created", or None.
+    """
+    if not video_time_alignment or video_time_alignment == "gpx-timestamps":
+        return None, None, None
+
+    recording = ffmpeg_gopro.find_recording(file_path)
+    duration = recording.video.duration
+
+    creation_time = _extract_creation_time(file_path)
+    if creation_time is not None:
+        start_date = creation_time
+        source = "media-created"
+    else:
+        from gopro_overlay.ffmpeg_gopro import filestat
+
+        fstat = filestat(file_path)
+        start_date = fstat.ctime
+        source = "file-created"
+
+    if video_time_alignment == "manual" and time_offset_seconds:
+        start_date = start_date + datetime.timedelta(seconds=time_offset_seconds)
+
+    return start_date, duration, source
+
+
+def _align_timezone(start_date, timeseries):
+    """Ensure start_date timezone awareness matches the timeseries data.
+
+    SRT timeseries may produce naive datetimes while start_date is always
+    timezone-aware. This prevents TypeError on datetime comparison.
+    """
+    if start_date is None or timeseries.min is None:
+        return start_date
+    if start_date.tzinfo is not None and timeseries.min.tzinfo is None:
+        return start_date.replace(tzinfo=None)
+    if start_date.tzinfo is None and timeseries.min.tzinfo is not None:
+        return start_date.replace(tzinfo=timeseries.min.tzinfo)
+    return start_date
 
 
 def _load_external_timeseries(filepath: Path, units):
@@ -380,6 +479,8 @@ def render_preview(
     gps_dop_max: float = DEFAULT_GPS_DOP_MAX,
     gps_speed_max: float = DEFAULT_GPS_SPEED_MAX,
     gpx_path: Path | None = None,
+    video_time_alignment: str | None = None,
+    time_offset_seconds: int = 0,
 ) -> tuple[bytes, int, int]:
     """Render a preview image for the given file and settings.
 
@@ -439,7 +540,7 @@ def render_preview(
             if background and background.size != (layout_info.width, layout_info.height):
                 background = _fit_video_to_canvas(background, layout_info.width, layout_info.height)
         except Exception as e:
-            print(f"Failed to extract video frame for preview: {e}")
+            logger.warning("Failed to extract video frame for preview: %s", e)
 
     # Create base image - use video frame or black background
     image = (
@@ -482,7 +583,13 @@ def render_preview(
                 if gpx_path:
                     # Video has no GPS — use external GPX/FIT/SRT file
                     timeseries = _load_external_timeseries(gpx_path, units)
-                    framemeta = timeseries_to_framemeta(timeseries, units)
+                    start_date, duration, _source = _resolve_time_alignment(
+                        file_path, video_time_alignment, ffmpeg_gopro, time_offset_seconds
+                    )
+                    start_date = _align_timezone(start_date, timeseries)
+                    framemeta = timeseries_to_framemeta(
+                        timeseries, units, start_date=start_date, duration=duration
+                    )
                 else:
                     raise ValueError("Video file does not contain GPS metadata") from e
 
@@ -533,6 +640,8 @@ async def render_preview_from_layout(
     gps_dop_max: float = DEFAULT_GPS_DOP_MAX,
     gps_speed_max: float = DEFAULT_GPS_SPEED_MAX,
     gpx_path: Path | None = None,
+    video_time_alignment: str | None = None,
+    time_offset_seconds: int = 0,
 ) -> dict:
     """
     Render preview from an editor layout.
@@ -578,6 +687,8 @@ async def render_preview_from_layout(
                 gps_dop_max,
                 gps_speed_max,
                 gpx_path,
+                video_time_alignment,
+                time_offset_seconds,
             ),
         )
         return {
@@ -612,6 +723,8 @@ def _render_layout_with_data(
     gps_dop_max: float = DEFAULT_GPS_DOP_MAX,
     gps_speed_max: float = DEFAULT_GPS_SPEED_MAX,
     gpx_path: Path | None = None,
+    video_time_alignment: str | None = None,
+    time_offset_seconds: int = 0,
 ) -> tuple[bytes, int, int]:
     """Render layout XML with actual data from file."""
     from gopro_overlay.ffmpeg import FFMPEG
@@ -653,7 +766,7 @@ def _render_layout_with_data(
             if background and background.size != (width, height):
                 background = _fit_video_to_canvas(background, width, height)
         except Exception as e:
-            print(f"Failed to extract video frame for editor preview: {e}")
+            logger.warning("Failed to extract video frame for editor preview: %s", e)
 
     # Create base image - use video frame or black background
     image = background.convert("RGBA") if background else Image.new("RGBA", (width, height), (0, 0, 0, 255))
@@ -686,7 +799,13 @@ def _render_layout_with_data(
             except (OSError, TypeError, ValueError) as e:
                 if gpx_path:
                     timeseries = _load_external_timeseries(gpx_path, units)
-                    framemeta = timeseries_to_framemeta(timeseries, units)
+                    start_date, duration, _source = _resolve_time_alignment(
+                        file_path, video_time_alignment, ffmpeg_gopro, time_offset_seconds
+                    )
+                    start_date = _align_timezone(start_date, timeseries)
+                    framemeta = timeseries_to_framemeta(
+                        timeseries, units, start_date=start_date, duration=duration
+                    )
                 else:
                     raise ValueError(f"Could not load GPS data from video: {e}. Try adding a GPX/FIT file.") from e
         else:
@@ -818,6 +937,7 @@ def generate_cli_command(
     secondary = file_manager.get_secondary_file(session_id)
 
     logger.info(f"generate_cli_command: session_id={session_id}")
+    logger.info(f"generate_cli_command: video_time_alignment={video_time_alignment!r}, gpx_merge_mode={gpx_merge_mode!r}")
     logger.info(f"generate_cli_command: files={files}")
     logger.info(f"generate_cli_command: primary={primary}")
 
@@ -848,12 +968,13 @@ def generate_cli_command(
             layout_info = get_available_layouts()[0]
         canvas_width, canvas_height = layout_info.width, layout_info.height
 
-    # For DJI SRT: auto-apply file-modified time alignment.
+    # For DJI SRT: always use file-modified time alignment.
+    # DJI videos don't have GoPro metadata, so --use-gpx-only is required.
     # SRT telemetry comes from the same recording — time alignment is determined
     # automatically from the video's mtime vs SRT timestamps.
     # mtime_role tracks whether mtime = start or end of recording (varies by DJI model).
     srt_mtime_role = "start"
-    if secondary and secondary.file_type == "srt" and primary_type == "video" and not video_time_alignment:
+    if secondary and secondary.file_type == "srt" and primary_type == "video":
         video_time_alignment = "file-modified"
 
     # If secondary is SRT, convert to GPX for CLI compatibility
@@ -869,18 +990,29 @@ def generate_cli_command(
     # Resolve secondary file path (use converted GPX if SRT was converted)
     secondary_path = secondary_gpx_path or (secondary.file_path if secondary else None)
 
+    # Map new alignment modes to CLI flag values.
+    # "auto" and "manual" use file-modified — render_service sets mtime to the
+    # resolved start_date (creation_time or st_ctime, optionally offset).
+    # "gpx-timestamps" means no alignment (GPX used as-is).
+    # "file-modified" is legacy (SRT auto-detection).
+    cli_time_alignment = video_time_alignment
+    if video_time_alignment in ("auto", "manual"):
+        cli_time_alignment = "file-modified"
+    elif video_time_alignment == "gpx-timestamps":
+        cli_time_alignment = None
+
     # Determine mode and build command
     if secondary and primary_type == "video":
         # Mode 2: Video + GPX/FIT merge
         # Note: --video-time-start only works with --use-gpx-only in gopro-dashboard.
         # When time alignment is requested, use --use-gpx-only mode instead of --gpx-merge.
-        if video_time_alignment:
+        if cli_time_alignment:
             # For SRT: choose --video-time-start or --video-time-end based on detected mtime role.
             # Different DJI models set mtime at recording start or end.
             if secondary.file_type == "srt" and srt_mtime_role == "end":
-                time_arg = f"--video-time-end {shlex.quote(video_time_alignment)}"
+                time_arg = f"--video-time-end {shlex.quote(cli_time_alignment)}"
             else:
-                time_arg = f"--video-time-start {shlex.quote(video_time_alignment)}"
+                time_arg = f"--video-time-start {shlex.quote(cli_time_alignment)}"
             cmd_parts = [
                 "gopro-dashboard.py",
                 shlex.quote(primary_path),
@@ -923,8 +1055,8 @@ def generate_cli_command(
             f"--gpx {shlex.quote(gpx_primary_path)}",
             f"--overlay-size {layout_info.width}x{layout_info.height}",
         ]
-        if video_time_alignment:
-            cmd_parts.append(f"--video-time-start {shlex.quote(video_time_alignment)}")
+        if cli_time_alignment:
+            cmd_parts.append(f"--video-time-start {shlex.quote(cli_time_alignment)}")
     else:
         # Mode 1: Video only (default - GoPro with embedded GPS)
         # Note: --video-time-start is not valid without --use-gpx-only

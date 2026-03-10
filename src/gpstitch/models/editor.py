@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
@@ -194,3 +194,5 @@ class EditorPreviewRequest(BaseModel):
     map_style: str | None = None
     gps_dop_max: float = DEFAULT_GPS_DOP_MAX
     gps_speed_max: float = DEFAULT_GPS_SPEED_MAX
+    video_time_alignment: Literal["auto", "gpx-timestamps", "manual"] = "auto"
+    time_offset_seconds: int = 0
