@@ -267,6 +267,104 @@ class TestAlternateLayoutRender:
 
 
 @pytest.mark.integration
+class TestZoneBarPositioning:
+    """Tests for zone_bar/bar positioning in editor preview (GitHub issue #6).
+
+    When zone_bar or bar widgets have x,y positions set in the editor,
+    they must be wrapped in <translate> elements, not have x,y as direct attributes.
+    The gopro-overlay library rejects unknown attributes on these components.
+    """
+
+    def test_render_preview_with_positioned_zone_bar(self, integration_test_video):
+        """Editor preview with zone_bar at non-zero position should render successfully.
+
+        This is the exact scenario from GitHub issue #6: user copies Power layout,
+        moves zone_bar widget to a new position, preview fails with
+        'Unknown attributes x,y'.
+        """
+        from gpstitch.models.editor import CanvasSettings, EditorLayout, LayoutMetadata, WidgetInstance
+        from gpstitch.services.renderer import _render_layout_with_data
+        from gpstitch.services.xml_converter import xml_converter
+
+        layout = EditorLayout(
+            id="test-zone-bar-issue-6",
+            metadata=LayoutMetadata(name="Test Zone Bar Position"),
+            canvas=CanvasSettings(width=1920, height=1080),
+            widgets=[
+                WidgetInstance(
+                    id="zone-bar-1",
+                    type="zone_bar",
+                    x=309,
+                    y=24,
+                    properties={
+                        "width": 800,
+                        "height": 75,
+                        "metric": "hr",
+                        "max": 200,
+                        "z1": 130,
+                        "z2": 163,
+                        "z3": 183,
+                    },
+                ),
+            ],
+        )
+
+        xml_content = xml_converter.layout_to_xml(layout)
+
+        # This should NOT raise IOError about unknown attributes x,y
+        png_bytes, width, height = _render_layout_with_data(
+            xml_content=xml_content,
+            file_path=integration_test_video,
+            frame_time_ms=5000,
+            width=1920,
+            height=1080,
+        )
+
+        assert len(png_bytes) > 0
+        assert png_bytes[:8] == b"\x89PNG\r\n\x1a\n"
+        assert width == 1920
+        assert height == 1080
+
+    def test_render_preview_with_positioned_bar(self, integration_test_video):
+        """Editor preview with bar at non-zero position should render successfully."""
+        from gpstitch.models.editor import CanvasSettings, EditorLayout, LayoutMetadata, WidgetInstance
+        from gpstitch.services.renderer import _render_layout_with_data
+        from gpstitch.services.xml_converter import xml_converter
+
+        layout = EditorLayout(
+            id="test-bar-position",
+            metadata=LayoutMetadata(name="Test Bar Position"),
+            canvas=CanvasSettings(width=1920, height=1080),
+            widgets=[
+                WidgetInstance(
+                    id="bar-1",
+                    type="bar",
+                    x=100,
+                    y=50,
+                    properties={
+                        "width": 400,
+                        "height": 30,
+                        "metric": "speed",
+                    },
+                ),
+            ],
+        )
+
+        xml_content = xml_converter.layout_to_xml(layout)
+
+        png_bytes, width, height = _render_layout_with_data(
+            xml_content=xml_content,
+            file_path=integration_test_video,
+            frame_time_ms=5000,
+            width=1920,
+            height=1080,
+        )
+
+        assert len(png_bytes) > 0
+        assert png_bytes[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+@pytest.mark.integration
 class TestRendererUnits:
     """Tests for unit options."""
 

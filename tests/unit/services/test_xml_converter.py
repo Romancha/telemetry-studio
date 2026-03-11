@@ -78,6 +78,84 @@ class TestLayoutToXml:
         assert 'y="200"' in xml
         assert 'type="compass"' in xml
 
+    def test_zone_bar_with_position_wrapped_in_translate(self, layout_factory, widget_factory):
+        """zone_bar with x,y should be wrapped in translate, not have x,y as attributes."""
+        widget = widget_factory(
+            widget_type="zone_bar",
+            x=309,
+            y=24,
+            properties={"width": 800, "height": 75, "metric": "hr", "max": 200},
+        )
+        layout = layout_factory(widgets=[widget])
+
+        xml = xml_converter.layout_to_xml(layout)
+
+        assert "<translate" in xml
+        assert 'x="309"' in xml
+        assert 'y="24"' in xml
+        assert 'type="zone_bar"' in xml
+        # x,y must NOT be on the component element itself
+        for line in xml.split("\n"):
+            if 'type="zone_bar"' in line:
+                assert 'x="309"' not in line
+                assert 'y="24"' not in line
+
+    def test_bar_with_position_wrapped_in_translate(self, layout_factory, widget_factory):
+        """bar with x,y should be wrapped in translate."""
+        widget = widget_factory(
+            widget_type="bar",
+            x=100,
+            y=50,
+            properties={"width": 400, "height": 30, "metric": "speed"},
+        )
+        layout = layout_factory(widgets=[widget])
+
+        xml = xml_converter.layout_to_xml(layout)
+
+        assert "<translate" in xml
+        assert 'x="100"' in xml
+        assert 'y="50"' in xml
+        assert 'type="bar"' in xml
+
+    def test_zone_bar_at_zero_position_no_translate(self, layout_factory, widget_factory):
+        """zone_bar at (0,0) should not be wrapped in translate."""
+        widget = widget_factory(
+            widget_type="zone_bar",
+            x=0,
+            y=0,
+            properties={"width": 800, "height": 75, "metric": "hr"},
+        )
+        layout = layout_factory(widgets=[widget])
+
+        xml = xml_converter.layout_to_xml(layout)
+
+        assert "<translate" not in xml
+        assert 'type="zone_bar"' in xml
+
+    def test_zone_bar_roundtrip_preserves_position(self, layout_factory, widget_factory):
+        """zone_bar position should survive layout -> XML -> layout roundtrip.
+
+        When zone_bar has x,y, it gets wrapped in a <translate> element.
+        On parsing back, this becomes a translate widget with zone_bar as child.
+        """
+        widget = widget_factory(
+            widget_type="zone_bar",
+            x=309,
+            y=24,
+            properties={"width": 800, "height": 75, "metric": "hr"},
+        )
+        layout = layout_factory(widgets=[widget])
+
+        xml = xml_converter.layout_to_xml(layout)
+        restored = xml_converter.xml_to_layout(xml, "Restored")
+
+        # zone_bar gets wrapped in translate, so the top-level widget is translate
+        translate = next(w for w in restored.widgets if w.type == "translate")
+        assert translate.x == 309
+        assert translate.y == 24
+        assert len(translate.children) == 1
+        assert translate.children[0].type == "zone_bar"
+
     def test_pretty_print(self, sample_editor_layout):
         """Pretty print should add indentation."""
         xml = xml_converter.layout_to_xml(sample_editor_layout, pretty_print=True)

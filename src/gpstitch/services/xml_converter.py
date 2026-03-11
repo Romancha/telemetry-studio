@@ -42,6 +42,8 @@ class XMLConverter:
     # Widget types that do NOT support x,y attributes directly
     # These need to be wrapped in a translate element for positioning
     WIDGETS_WITHOUT_XY = {
+        "bar",
+        "zone_bar",
         "moving_journey_map",
         "circuit_map",
         "compass",
