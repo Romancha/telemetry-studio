@@ -190,6 +190,18 @@ def _resolve_layout_path(layout: str) -> Path:
     return Path(layout)
 
 
+def _resolve_gopro_overlay_layout_path(layout: str) -> Path:
+    """Resolve XML path for a gopro-overlay built-in layout."""
+    from importlib.resources import files
+
+    from gopro_overlay import layouts
+
+    xml_path = Path(str(files(layouts) / f"{layout}.xml"))
+    if not xml_path.exists():
+        raise ValueError(f"Layout '{layout}' not found in gopro_overlay package (looked for {xml_path})")
+    return xml_path
+
+
 def get_available_units() -> dict:
     """Get available unit options from centralized constants."""
     return UNIT_OPTIONS
@@ -1078,15 +1090,16 @@ def generate_cli_command(
             cmd_parts.append("--layout xml")
             cmd_parts.append(f"--layout-xml {shlex.quote(str(local_layout))}")
         else:
-            # Map UI template names to CLI layout names
-            # UI uses names like "default-1920x1080" but CLI only accepts "default", "speed-awareness", "xml"
-            cli_layout = layout
+            # gopro-dashboard.py only accepts: default, speed-awareness, xml
             if layout.startswith("default-"):
-                cli_layout = "default"
-            elif layout.startswith("speed-awareness"):
-                cli_layout = "speed-awareness"
-            # Predefined layout: use --layout <name>
-            cmd_parts.append(f"--layout {shlex.quote(cli_layout)}")
+                cmd_parts.append("--layout default")
+            elif layout == "speed-awareness":
+                cmd_parts.append("--layout speed-awareness")
+            else:
+                # All other layouts are XML files in gopro_overlay/layouts/
+                xml_path = _resolve_gopro_overlay_layout_path(layout)
+                cmd_parts.append("--layout xml")
+                cmd_parts.append(f"--layout-xml {shlex.quote(str(xml_path))}")
 
     # Always add unit options (CLI defaults differ from UI defaults)
     cmd_parts.append(f"--units-speed {shlex.quote(units_speed)}")

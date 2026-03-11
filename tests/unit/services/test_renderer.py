@@ -456,3 +456,161 @@ class TestResolveTimeAlignment:
             )
 
         assert start_date == creation_time
+
+
+class TestLayoutCommandGeneration:
+    """Tests for --layout / --layout-xml in generate_cli_command (GitHub issue #5)."""
+
+    @pytest.fixture
+    def mock_file_manager(self, monkeypatch):
+        from gpstitch.services import file_manager as fm_module
+
+        manager = MagicMock()
+        monkeypatch.setattr(fm_module, "file_manager", manager)
+        return manager
+
+    def _setup_video_only(self, mock_file_manager):
+        from gpstitch.models.schemas import FileInfo, FileRole
+
+        primary = FileInfo(
+            filename="video.mp4",
+            file_path="/tmp/video.mp4",
+            file_type="video",
+            role=FileRole.PRIMARY,
+        )
+        mock_file_manager.get_files.return_value = [primary]
+        mock_file_manager.get_primary_file.return_value = primary
+        mock_file_manager.get_secondary_file.return_value = None
+
+    def test_default_layout_uses_layout_flag(self, mock_file_manager):
+        """default-1920x1080 should generate --layout default (not --layout-xml)."""
+        from gpstitch.services.renderer import generate_cli_command
+
+        self._setup_video_only(mock_file_manager)
+
+        cmd, _ = generate_cli_command(
+            session_id="test",
+            output_file="/tmp/out.mp4",
+            layout="default-1920x1080",
+        )
+
+        assert "--layout default" in cmd
+        assert "--layout-xml" not in cmd
+
+    def test_speed_awareness_layout_uses_layout_flag(self, mock_file_manager):
+        """speed-awareness should generate --layout speed-awareness."""
+        from gpstitch.services.renderer import generate_cli_command
+
+        self._setup_video_only(mock_file_manager)
+
+        cmd, _ = generate_cli_command(
+            session_id="test",
+            output_file="/tmp/out.mp4",
+            layout="speed-awareness",
+        )
+
+        assert "--layout speed-awareness" in cmd
+        assert "--layout-xml" not in cmd
+
+    def test_xml_layout_uses_layout_xml_flag(self, mock_file_manager):
+        """Non-builtin layouts like power-1920x1080 must use --layout xml --layout-xml <path>."""
+        import re
+
+        from gpstitch.services.renderer import generate_cli_command
+
+        self._setup_video_only(mock_file_manager)
+
+        cmd, _ = generate_cli_command(
+            session_id="test",
+            output_file="/tmp/out.mp4",
+            layout="power-1920x1080",
+        )
+
+        # Must NOT pass layout name directly - gopro-dashboard.py rejects it
+        assert "--layout power-1920x1080" not in cmd
+        # Must use --layout xml --layout-xml <path>
+        assert "--layout xml" in cmd
+        assert "--layout-xml" in cmd
+        # The resolved path must exist on disk
+        m = re.search(r"--layout-xml\s+(\S+)", cmd)
+        assert m, "No --layout-xml path found"
+        assert Path(m.group(1)).exists(), "layout-xml path must exist on disk"
+
+    def test_moto_layout_uses_layout_xml_flag(self, mock_file_manager):
+        """moto_1080 layout must use --layout xml --layout-xml <path>."""
+        from gpstitch.services.renderer import generate_cli_command
+
+        self._setup_video_only(mock_file_manager)
+
+        cmd, _ = generate_cli_command(
+            session_id="test",
+            output_file="/tmp/out.mp4",
+            layout="moto_1080",
+        )
+
+        assert "--layout moto_1080" not in cmd
+        assert "--layout xml" in cmd
+        assert "--layout-xml" in cmd
+
+    def test_example_layout_uses_layout_xml_flag(self, mock_file_manager):
+        """example layout must use --layout xml --layout-xml <path>."""
+        from gpstitch.services.renderer import generate_cli_command
+
+        self._setup_video_only(mock_file_manager)
+
+        cmd, _ = generate_cli_command(
+            session_id="test",
+            output_file="/tmp/out.mp4",
+            layout="example",
+        )
+
+        assert "--layout example" not in cmd
+        assert "--layout xml" in cmd
+        assert "--layout-xml" in cmd
+
+    def test_custom_template_uses_layout_xml_path(self, mock_file_manager):
+        """When layout_xml_path is provided, use --layout xml --layout-xml <path>."""
+        from gpstitch.services.renderer import generate_cli_command
+
+        self._setup_video_only(mock_file_manager)
+
+        cmd, _ = generate_cli_command(
+            session_id="test",
+            output_file="/tmp/out.mp4",
+            layout="default-1920x1080",
+            layout_xml_path="/tmp/custom.xml",
+        )
+
+        assert "--layout xml" in cmd
+        assert "--layout-xml /tmp/custom.xml" in cmd
+
+    def test_gpstitch_local_layout_uses_layout_xml(self, mock_file_manager):
+        """GPStitch custom layouts (e.g. dji-drone-*) should use --layout xml --layout-xml."""
+        from gpstitch.services.renderer import generate_cli_command
+
+        self._setup_video_only(mock_file_manager)
+
+        cmd, _ = generate_cli_command(
+            session_id="test",
+            output_file="/tmp/out.mp4",
+            layout="dji-drone-1920x1080",
+        )
+
+        assert "--layout xml" in cmd
+        assert "--layout-xml" in cmd
+        # Verify it resolved to the local gpstitch layout, not gopro-overlay
+        local_layout_dir = str(Path(__file__).parent.parent.parent.parent / "src" / "gpstitch" / "layouts")
+        assert local_layout_dir in cmd or "dji-drone-1920x1080.xml" in cmd
+
+    def test_unknown_layout_raises_error(self, mock_file_manager):
+        """Unknown layout name should raise ValueError."""
+        from gpstitch.services.renderer import generate_cli_command
+
+        self._setup_video_only(mock_file_manager)
+
+        with pytest.raises(ValueError, match="not found in gopro_overlay"):
+            generate_cli_command(
+                session_id="test",
+                output_file="/tmp/out.mp4",
+                layout="nonexistent-layout-xyz",
+            )

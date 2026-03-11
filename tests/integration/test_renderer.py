@@ -132,6 +132,141 @@ class TestRendererLayouts:
 
 
 @pytest.mark.integration
+class TestAlternateLayoutRender:
+    """Tests that alternate (non-default) layouts render correctly (GitHub issue #5).
+
+    Uses render_preview() to verify the full pipeline works with XML-based layouts
+    that require --layout xml --layout-xml <path>.
+    """
+
+    def test_render_preview_with_power_layout(self, integration_test_video):
+        """power-1920x1080 layout should render a valid preview image."""
+        from gpstitch.services.renderer import render_preview
+
+        png_bytes, width, height = render_preview(
+            file_path=integration_test_video,
+            layout="power-1920x1080",
+            frame_time_ms=5000,
+        )
+
+        assert len(png_bytes) > 0
+        assert png_bytes[:8] == b"\x89PNG\r\n\x1a\n"
+        assert width == 1920
+        assert height == 1080
+
+    def test_render_preview_with_moto_layout(self, integration_test_video):
+        """moto_1080 layout should render a valid preview image."""
+        from gpstitch.services.renderer import render_preview
+
+        png_bytes, width, height = render_preview(
+            file_path=integration_test_video,
+            layout="moto_1080",
+            frame_time_ms=5000,
+        )
+
+        assert len(png_bytes) > 0
+        assert png_bytes[:8] == b"\x89PNG\r\n\x1a\n"
+        assert width == 1920
+        assert height == 1080
+
+    def test_cli_command_for_alternate_layout(self, clean_file_manager, integration_test_video, monkeypatch):
+        """CLI command for power-1920x1080 should use --layout xml --layout-xml."""
+        from gpstitch.services import file_manager as fm_module
+        from gpstitch.services.renderer import generate_cli_command
+
+        session_id = clean_file_manager.create_local_session()
+        clean_file_manager.add_file(
+            session_id=session_id,
+            filename=integration_test_video.name,
+            file_path=integration_test_video,
+            file_type="video",
+            role=FileRole.PRIMARY,
+        )
+
+        monkeypatch.setattr(fm_module, "file_manager", clean_file_manager)
+
+        cmd, _ = generate_cli_command(
+            session_id=session_id,
+            output_file="/tmp/output.mp4",
+            layout="power-1920x1080",
+        )
+
+        assert "--layout xml" in cmd
+        assert "--layout-xml" in cmd
+        assert "--layout power-1920x1080" not in cmd
+
+    @pytest.mark.slow
+    def test_full_render_with_alternate_layout(self, integration_test_video, clean_file_manager, monkeypatch):
+        """Full render with power-1920x1080 layout should produce a valid video."""
+        import tempfile
+
+        from gpstitch.services import file_manager as fm_module
+        from gpstitch.services.renderer import generate_cli_command
+
+        session_id = clean_file_manager.create_local_session()
+        clean_file_manager.add_file(
+            session_id=session_id,
+            filename=integration_test_video.name,
+            file_path=integration_test_video,
+            file_type="video",
+            role=FileRole.PRIMARY,
+        )
+
+        monkeypatch.setattr(fm_module, "file_manager", clean_file_manager)
+
+        with tempfile.TemporaryDirectory(prefix="gpstitch_test_") as tmpdir:
+            output_file = Path(tmpdir) / "power_layout_output.mp4"
+
+            cmd, _ = generate_cli_command(
+                session_id=session_id,
+                output_file=str(output_file),
+                layout="power-1920x1080",
+            )
+
+            # Execute the actual render
+            from gpstitch.scripts import gopro_dashboard_wrapper
+
+            wrapper = Path(gopro_dashboard_wrapper.__file__)
+            args = shlex.split(cmd)
+            args[0] = str(wrapper)
+
+            result = subprocess.run(
+                [sys.executable, *args],
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
+
+            assert result.returncode == 0, f"Render with power-1920x1080 failed:\n{result.stderr[-2000:]}"
+            assert output_file.exists(), "Output file was not created"
+            assert output_file.stat().st_size > 0, "Output file is empty"
+
+            # Verify output video metadata
+            probe_result = subprocess.run(
+                [
+                    "ffprobe",
+                    "-hide_banner",
+                    "-print_format",
+                    "json",
+                    "-show_streams",
+                    str(output_file),
+                ],
+                capture_output=True,
+                text=True,
+            )
+            assert probe_result.returncode == 0
+
+            metadata = json.loads(probe_result.stdout)
+            video_stream = next(
+                (s for s in metadata.get("streams", []) if s["codec_type"] == "video"),
+                None,
+            )
+            assert video_stream is not None, "No video stream in output"
+            assert int(video_stream["width"]) > 0
+            assert int(video_stream["height"]) > 0
+
+
+@pytest.mark.integration
 class TestRendererUnits:
     """Tests for unit options."""
 
