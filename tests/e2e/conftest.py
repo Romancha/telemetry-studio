@@ -1,9 +1,11 @@
 """E2E test fixtures for Playwright-based UI testing."""
 
+import os
 import socket
 import threading
 import time
 from contextlib import closing
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
@@ -12,6 +14,10 @@ import uvicorn
 from playwright.sync_api import Page
 
 from tests.fixtures.data import SAMPLE_GPX_CONTENT
+
+# Original mtime of DJI test video (git clone does not preserve file timestamps).
+# Value from: DJI_20250723102139_0001_D.MP4 recorded 2025-07-23, mtime = end of recording.
+_DJI_VIDEO_ORIGINAL_MTIME = datetime(2025, 7, 23, 7, 21, 42, tzinfo=UTC).timestamp()
 
 
 def find_free_port() -> int:
@@ -96,6 +102,19 @@ def app_page(page: Page, base_url: str, live_server) -> Page:
     page.goto(base_url)
     page.wait_for_load_state("networkidle")
     return page
+
+
+# =============================================================================
+# Fixture mtime restoration (git does not preserve file timestamps)
+# =============================================================================
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _restore_dji_fixture_mtime():
+    """Restore original mtime on DJI video fixture lost during git clone."""
+    dji_video = Path(__file__).parent.parent / "fixtures" / "videos" / "DJI_20250723102139_0001_D.MP4"
+    if dji_video.exists():
+        os.utime(dji_video, (_DJI_VIDEO_ORIGINAL_MTIME, _DJI_VIDEO_ORIGINAL_MTIME))
 
 
 # =============================================================================
