@@ -1,5 +1,14 @@
 # Release Notes
 
+## Version 0.10.1 — 12 Mar 2026
+
+### 🐞 Fixes
+
+- Fixed DJI drone preview crash caused by UTC/local timezone mismatch in time alignment — preview now correctly estimates the UTC offset and converts to the SRT local time domain ([#7](https://github.com/Romancha/GPStitch/issues/7))
+- Fixed cairo-based layouts (e.g. `example`, `example-2`) failing with "This widget needs pycairo" — added missing `pycairo` dependency ([#5](https://github.com/Romancha/GPStitch/issues/5))
+
+---
+
 ## Version 0.10.0 — 12 Mar 2026
 
 ### 🎉 Major Features
