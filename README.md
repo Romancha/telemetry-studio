@@ -16,6 +16,7 @@ A visual web interface for creating video overlays with GPS telemetry data. Wrap
 - **GPS Quality Analysis** — Automatic signal quality check with warnings before rendering
 - **Template Management** — Save and load custom templates
 - **Batch Rendering** — Process multiple files with the same settings
+- **Shared GPX Batch Render** — Apply a single GPX track to multiple videos with automatic odometer offset per video
 - **Background Jobs** — Render videos in the background with progress tracking
 
 ## Screenshots
@@ -56,6 +57,10 @@ Process multiple videos at once with the same overlay settings.
 <img src="https://raw.githubusercontent.com/Romancha/GPStitch/main/docs/images/batch_create.png" width="400" alt="Batch Create"/>
 <img src="https://raw.githubusercontent.com/Romancha/GPStitch/main/docs/images/batch_progress.png" width="400" alt="Batch Progress"/>
 </p>
+
+### Shared GPX Batch Render
+
+Apply a single GPX track to multiple videos recorded during the same activity. Each video automatically gets an odometer offset calculated from its creation time relative to the GPX track start, so the overlay shows the correct absolute distance from the beginning of the track.
 
 ## Requirements
 
@@ -132,6 +137,7 @@ GPStitch includes runtime patches for `gopro-overlay` that add:
 - **Audio stream copy** — Preserves audio without re-encoding
 - **Metadata preservation** — Keeps original video metadata in output
 - **DJI camera metrics** — Extends overlay engine with ISO, shutter, f-number, EV, color temperature, and focal length from DJI SRT files
+- **Odometer offset** — Allows odometer to start from a custom offset value for shared GPX batch rendering
 
 Patches are applied automatically at startup. To disable:
 
