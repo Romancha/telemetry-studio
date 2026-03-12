@@ -15,6 +15,9 @@ jobs:
 
       - uses: FedericoCarboni/setup-ffmpeg@v3
 
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libcairo2-dev
+
       - name: Install dependencies
         run: uv sync --all-extras
 
