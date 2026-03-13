@@ -1,7 +1,11 @@
 # GPStitch
 
+[![PyPI](https://img.shields.io/pypi/v/gpstitch)](https://pypi.org/project/gpstitch/)
+[![Downloads](https://img.shields.io/pypi/dm/gpstitch)](https://pypi.org/project/gpstitch/)
+[![GitHub release](https://img.shields.io/github/v/release/Romancha/GPStitch)](https://github.com/Romancha/GPStitch/releases)
 [![Python 3.14+](https://img.shields.io/badge/python-3.14+-blue.svg)](https://www.python.org/downloads/)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
 A visual web interface for creating video overlays with GPS telemetry data. Wraps the powerful [gopro-overlay](https://github.com/time4tea/gopro-dashboard-overlay) library with an intuitive UI.
 
